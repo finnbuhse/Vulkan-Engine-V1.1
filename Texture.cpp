@@ -1,12 +1,13 @@
 #include "Texture.h"
 #include "Mesh.h"
 #include "stb_image.h"
+#include "float16.h"
 #include <Windows.h>
 
 struct FormatInfo
 {
 	VkComponentMapping componentMapping;
-	unsigned int channels;
+	unsigned int nChannels;
 	unsigned int bytesPerChannel;
 };
 
@@ -18,78 +19,77 @@ FormatInfo getFormatInfo(const VkFormat& format)
 	if (uiFormat > VK_FORMAT_A1R5G5B5_UNORM_PACK16 && uiFormat < VK_FORMAT_R8G8_UNORM)
 	{
 		formatInfo.componentMapping = { VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_ONE, VK_COMPONENT_SWIZZLE_ONE, VK_COMPONENT_SWIZZLE_ONE };
-		formatInfo.channels = 1;
+		formatInfo.nChannels = 1;
 		formatInfo.bytesPerChannel = 1;
 	}
 	else if (uiFormat > VK_FORMAT_R8_SRGB && uiFormat < VK_FORMAT_R8G8B8_UNORM)
 	{
 		formatInfo.componentMapping = { VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_ONE, VK_COMPONENT_SWIZZLE_ONE };
-		formatInfo.channels = 2;
+		formatInfo.nChannels = 2;
 		formatInfo.bytesPerChannel = 1;
 	}
 	else if (uiFormat > VK_FORMAT_R8G8_SRGB && uiFormat < VK_FORMAT_R8G8B8A8_UNORM)
 	{
 		formatInfo.componentMapping = { VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_B, VK_COMPONENT_SWIZZLE_ONE };
-		formatInfo.channels = 3;
+		formatInfo.nChannels = 3;
 		formatInfo.bytesPerChannel = 1;
 	}
 	else if (uiFormat > VK_FORMAT_B8G8R8_SRGB && uiFormat < VK_FORMAT_A2R10G10B10_UNORM_PACK32)
 	{
 		formatInfo.componentMapping = { VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_B, VK_COMPONENT_SWIZZLE_A };
-		formatInfo.channels = 4;
+		formatInfo.nChannels = 4;
 		formatInfo.bytesPerChannel = 1;
 	}
 	else if (uiFormat > VK_FORMAT_A2B10G10R10_SINT_PACK32 && uiFormat < VK_FORMAT_R16G16_UNORM)
 	{
 		formatInfo.componentMapping = { VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_ONE, VK_COMPONENT_SWIZZLE_ONE, VK_COMPONENT_SWIZZLE_ONE };
-		formatInfo.channels = 1;
+		formatInfo.nChannels = 1;
 		formatInfo.bytesPerChannel = 2;
 	}
 	else if (uiFormat > VK_FORMAT_R16_SFLOAT && uiFormat < VK_FORMAT_R16G16B16_UNORM)
 	{
 		formatInfo.componentMapping = { VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_ONE, VK_COMPONENT_SWIZZLE_ONE };
-		formatInfo.channels = 2;
+		formatInfo.nChannels = 2;
 		formatInfo.bytesPerChannel = 2;
 	}
 	else if (uiFormat > VK_FORMAT_R16G16_SFLOAT && uiFormat < VK_FORMAT_R16G16B16A16_UNORM)
 	{
 		formatInfo.componentMapping = { VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_B, VK_COMPONENT_SWIZZLE_ONE };
-		formatInfo.channels = 3;
+		formatInfo.nChannels = 3;
 		formatInfo.bytesPerChannel = 2;
 	}
 	else if (uiFormat > VK_FORMAT_R16G16B16_SFLOAT && uiFormat < VK_FORMAT_R32_UINT)
 	{
 		formatInfo.componentMapping = { VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_B, VK_COMPONENT_SWIZZLE_A };
-		formatInfo.channels = 4;
+		formatInfo.nChannels = 4;
 		formatInfo.bytesPerChannel = 2;
 	}
 	else if (uiFormat > VK_FORMAT_R16G16B16A16_SFLOAT && uiFormat < VK_FORMAT_R32G32_UINT)
 	{
 		formatInfo.componentMapping = { VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_ONE, VK_COMPONENT_SWIZZLE_ONE, VK_COMPONENT_SWIZZLE_ONE };
-		formatInfo.channels = 1;
+		formatInfo.nChannels = 1;
 		formatInfo.bytesPerChannel = 4;
 	}
 	else if (uiFormat > VK_FORMAT_R32_SFLOAT && uiFormat < VK_FORMAT_R32G32B32_UINT)
 	{
 		formatInfo.componentMapping = { VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_ONE, VK_COMPONENT_SWIZZLE_ONE };
-		formatInfo.channels = 2;
+		formatInfo.nChannels = 2;
 		formatInfo.bytesPerChannel = 4;
 	}
 	else if (uiFormat > VK_FORMAT_R32G32_SFLOAT && uiFormat < VK_FORMAT_R32G32B32A32_UINT)
 	{
 		formatInfo.componentMapping = { VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_B, VK_COMPONENT_SWIZZLE_ONE };
-		formatInfo.channels = 3;
+		formatInfo.nChannels = 3;
 		formatInfo.bytesPerChannel = 4;
 	}
 	else if (uiFormat > VK_FORMAT_R32G32B32_SFLOAT && uiFormat < VK_FORMAT_R64_UINT)
 	{
 		formatInfo.componentMapping = { VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_B, VK_COMPONENT_SWIZZLE_A };
-		formatInfo.channels = 4;
+		formatInfo.nChannels = 4;
 		formatInfo.bytesPerChannel = 4;
 	}
 	return formatInfo;
 }
-
 
 
 
@@ -113,10 +113,10 @@ Texture::Texture(const TextureInfo& textureInfo)
 
 	// Load image
 	int width, height, channels;
-	unsigned char* textureData = stbi_load(textureInfo.directory.c_str(), &width, &height, &channels, formatInfo.channels);
+	unsigned char* textureData = stbi_load(textureInfo.directory.c_str(), &width, &height, &channels, formatInfo.nChannels);
 	assert(("[ERROR] STBI failed to load image", textureData));
 
-	VkDeviceSize imageSize = width * height * formatInfo.channels * formatInfo.bytesPerChannel; // Assuming byte per channel
+	VkDeviceSize imageSize = width * height * formatInfo.nChannels * formatInfo.bytesPerChannel; // Assuming byte per channel
 	unsigned int nMips = unsigned int(std::floor(std::log2(width > height ? width : height))) + 1;
 
 	assert(("[ERROR] Unsupported texture format", formatProperties.maxExtent.width >= width && formatProperties.maxExtent.height >= height && formatProperties.maxExtent.depth >= 1 && formatProperties.maxMipLevels >= 1 && formatProperties.maxArrayLayers >= 1 && formatProperties.sampleCounts & VK_SAMPLE_COUNT_1_BIT && formatProperties.maxResourceSize >= imageSize));
@@ -339,34 +339,51 @@ Cubemap::Cubemap(CubemapInfo cubemapInfo)
 
 	VkImageFormatProperties formatProperties;
 	assert(("[ERROR] Unsupported texture format", !vkGetPhysicalDeviceImageFormatProperties(renderSystem.mPhysicalDevice, cubemapInfo.format, VK_IMAGE_TYPE_2D, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, 0, &formatProperties)));
-
-	FormatInfo formatInfo = getFormatInfo(cubemapInfo.format);
+	const FormatInfo formatInfo = getFormatInfo(cubemapInfo.format);
 
     #pragma region Create cubemap resources
 	stbi_set_flip_vertically_on_load(true);
 
-	float* hdrTextureData[6];
-	unsigned char* textureData[6];
+	void* textureData[6];
 	// Load images
 	int width, height, channels;
 	bool hdr = cubemapInfo.format == VK_FORMAT_R16_SFLOAT || cubemapInfo.format == VK_FORMAT_R16G16_SFLOAT || cubemapInfo.format == VK_FORMAT_R16G16B16_SFLOAT || cubemapInfo.format == VK_FORMAT_R16G16B16A16_SFLOAT || cubemapInfo.format == VK_FORMAT_R32_SFLOAT || cubemapInfo.format == VK_FORMAT_R32G32_SFLOAT || cubemapInfo.format == VK_FORMAT_R32G32B32_SFLOAT || cubemapInfo.format == VK_FORMAT_R32G32B32A32_SFLOAT;
 	if (hdr)
 	{
-		for (unsigned int i = 0; i < 6; i++)
+		if (formatInfo.bytesPerChannel == 4)
 		{
-			hdrTextureData[i] = stbi_loadf(cubemapInfo.directories[i].c_str(), &width, &height, &channels, formatInfo.channels);
+			for (unsigned int i = 0; i < 6; i++)
+			{
+				textureData[i] = stbi_loadf(cubemapInfo.directories[i].c_str(), &width, &height, &channels, formatInfo.nChannels);
+			}
+		}
+		else if (formatInfo.bytesPerChannel == 2)
+		{
+			for (unsigned int i = 0; i < 6; i++)
+			{
+				float* data = stbi_loadf(cubemapInfo.directories[i].c_str(), &width, &height, &channels, formatInfo.nChannels);
+				unsigned long long dataSize = unsigned long long(width) * height * formatInfo.nChannels;
+
+				textureData[i] = new float16[dataSize];
+				for (unsigned long long j = 0; j < dataSize; j++)
+				{
+					((float16*)textureData[i])[j] = floatToFloat16(data[j]);
+				}
+				stbi_image_free((void*)data);
+			}
 		}
 	}
 	else
 	{
 		for (unsigned int i = 0; i < 6; i++)
 		{
-			textureData[i] = stbi_load(cubemapInfo.directories[i].c_str(), &width, &height, &channels, formatInfo.channels);
+			textureData[i] = stbi_load(cubemapInfo.directories[i].c_str(), &width, &height, &channels, formatInfo.nChannels);
 		}
 	}
 
-	const VkDeviceSize imageSize = 6 * VkDeviceSize(width) * height * formatInfo.channels * formatInfo.bytesPerChannel;
-	unsigned int nMips = unsigned int(std::floor(std::log2(width > height ? width : height))) + 1;
+	unsigned long long layerSize = unsigned long long(width) * height * formatInfo.nChannels * formatInfo.bytesPerChannel;
+	const VkDeviceSize imageSize = 6 * layerSize;
+	const unsigned int nMips = unsigned int(std::floor(std::log2(width > height ? width : height))) + 1;
 
 	assert(("[ERROR] Unsupported texture format", formatProperties.maxExtent.width >= width && formatProperties.maxExtent.height >= height && formatProperties.maxExtent.depth >= 1 && formatProperties.maxMipLevels >= 1 && formatProperties.maxArrayLayers >= 1 && formatProperties.sampleCounts & VK_SAMPLE_COUNT_1_BIT && formatProperties.maxResourceSize >= imageSize));
 
@@ -433,22 +450,10 @@ Cubemap::Cubemap(CubemapInfo cubemapInfo)
 	result = vkMapMemory(renderSystem.mDevice, stagingMemory, 0, imageSize, 0, (void**)&data);
 	validateResult(result);
 
-	unsigned long long dataLayer = unsigned long long(width) * height * formatInfo.channels * formatInfo.bytesPerChannel;
-	if (hdr)
+	for (unsigned int i = 0; i < 6; i++)
 	{
-		for (unsigned int i = 0; i < 6; i++)
-		{
-			memcpy((void*)(data + i * dataLayer), (const void*)hdrTextureData[i], dataLayer);
-			stbi_image_free((void*)hdrTextureData[i]);
-		}
-	}
-	else
-	{
-		for (unsigned int i = 0; i < 6; i++)
-		{
-			memcpy((void*)(data + i * dataLayer), (const void*)textureData[i], dataLayer);
-			stbi_image_free((void*)textureData[i]);
-		}
+		memcpy((void*)(data + i * layerSize), textureData[i], layerSize);
+		stbi_image_free(textureData[i]);
 	}
 
 	vkUnmapMemory(renderSystem.mDevice, stagingMemory);
@@ -533,14 +538,6 @@ Cubemap::Cubemap(CubemapInfo cubemapInfo)
 	result = vkEndCommandBuffer(textureManager.mCommandBuffer);
 	validateResult(result);
 
-	VkFence fence;
-
-	VkFenceCreateInfo fenceCreateInfo = {};
-	fenceCreateInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-	fenceCreateInfo.pNext = nullptr;
-	fenceCreateInfo.flags = 0;
-	vkCreateFence(renderSystem.mDevice, &fenceCreateInfo, nullptr, &fence);
-
 	VkSubmitInfo submitInfo = {};
 	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 	submitInfo.pNext = nullptr;
@@ -551,7 +548,7 @@ Cubemap::Cubemap(CubemapInfo cubemapInfo)
 	submitInfo.pCommandBuffers = &textureManager.mCommandBuffer;
 	submitInfo.signalSemaphoreCount = 0;
 	submitInfo.pSignalSemaphores = nullptr;
-	result = vkQueueSubmit(renderSystem.mGraphicsQueue, 1, &submitInfo, fence);
+	result = vkQueueSubmit(renderSystem.mGraphicsQueue, 1, &submitInfo, NULL);
 	validateResult(result);
 
 	// Create image view
@@ -568,7 +565,8 @@ Cubemap::Cubemap(CubemapInfo cubemapInfo)
 	imageViewCreateInfo.subresourceRange.levelCount = nMips;
 	imageViewCreateInfo.subresourceRange.baseArrayLayer = 0;
 	imageViewCreateInfo.subresourceRange.layerCount = 6;
-	vkCreateImageView(renderSystem.mDevice, &imageViewCreateInfo, nullptr, &mImageView);
+	result = vkCreateImageView(renderSystem.mDevice, &imageViewCreateInfo, nullptr, &mImageView);
+	validateResult(result);
 
 	// Create sampler
 	VkSamplerCreateInfo samplerCreateInfo = {};
@@ -590,18 +588,13 @@ Cubemap::Cubemap(CubemapInfo cubemapInfo)
 	samplerCreateInfo.compareOp = VK_COMPARE_OP_ALWAYS;
 	samplerCreateInfo.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
 	samplerCreateInfo.unnormalizedCoordinates = VK_FALSE;
-	vkCreateSampler(renderSystem.mDevice, &samplerCreateInfo, nullptr, &mSampler);
-	
+	result = vkCreateSampler(renderSystem.mDevice, &samplerCreateInfo, nullptr, &mSampler);
+	validateResult(result);
+
 	result = vkQueueWaitIdle(renderSystem.mGraphicsQueue);
 	validateResult(result);
-	/*
-	do
-	{
-		result = vkWaitForFences(renderSystem.mDevice, 1, &fence, VK_FALSE, 0);
-		Sleep(1000);
-	} while (result == VK_TIMEOUT);
-	*/
-	vkResetCommandBuffer(textureManager.mCommandBuffer, 0);
+	result = vkResetCommandBuffer(textureManager.mCommandBuffer, 0);
+	validateResult(result);
 
 	vkDestroyBuffer(renderSystem.mDevice, stagingBuffer, nullptr);
 	vkFreeMemory(renderSystem.mDevice, stagingMemory, nullptr);
