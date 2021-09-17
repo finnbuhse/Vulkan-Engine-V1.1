@@ -1245,12 +1245,12 @@ RenderSystem::RenderSystem()
 
 	VkPipelineColorBlendAttachmentState attachmentBlendState = {};
 	attachmentBlendState.colorWriteMask = 0xf;
-	attachmentBlendState.srcColorBlendFactor = VK_BLEND_FACTOR_ZERO;
-	attachmentBlendState.dstColorBlendFactor = VK_BLEND_FACTOR_ZERO;
+	attachmentBlendState.srcColorBlendFactor = VK_BLEND_FACTOR_ONE;
+	attachmentBlendState.dstColorBlendFactor = VK_BLEND_FACTOR_ONE;
 	attachmentBlendState.colorBlendOp = VK_BLEND_OP_ADD;
-	attachmentBlendState.blendEnable = VK_FALSE;
-	attachmentBlendState.srcAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
-	attachmentBlendState.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+	attachmentBlendState.blendEnable = VK_TRUE;
+	attachmentBlendState.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+	attachmentBlendState.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
 	attachmentBlendState.alphaBlendOp = VK_BLEND_OP_ADD;
 
 	VkPipelineColorBlendStateCreateInfo blendState = {};
