@@ -27,12 +27,13 @@ void Transform::enlarge(const glm::vec3& factor)
 
 void Transform::addChild(const Entity& child)
 {
-	child.getComponent<Transform>().parentID = entityID;
-
+	/* Assuming the child had no parent previous to this procedure (it shouldn't have); it would be in the system, and must be removed
+	   because children are not included in the system because the children update via their parents first updating invoking each of their children's update methods */
 	TransformSystem& transformSystem = TransformSystem::instance();
-	transformSystem.mEntityIDs.erase(std::find(transformSystem.mEntityIDs.begin(), transformSystem.mEntityIDs.end(), child.ID())); // Assuming the child had no parent previous to this procedure (it shouldn't have); it would be in the system, and must be removed
+	transformSystem.mEntityIDs.erase(std::find(transformSystem.mEntityIDs.begin(), transformSystem.mEntityIDs.end(), child.ID())); 
 	
-	childrenIDs.push(child.ID());
+	child.getComponent<Transform>().parentID = entityID; // Set child's parent to this
+	childrenIDs.push(child.ID()); // Add child to children array
 }
 
 void Transform::removeChild(const Entity& child)
@@ -41,7 +42,7 @@ void Transform::removeChild(const Entity& child)
 
 	TransformSystem::instance().mEntityIDs.push_back(child.ID()); // The child won't be in the system and must be added
 
-	childrenIDs.remove(childrenIDs.find(child.ID()));
+	childrenIDs.remove(childrenIDs.find(child.ID())); // Remove child from children array
 }
 
 unsigned int Transform::subscribeChangedEvent(const std::function<void(const Transform&)>& callback)
@@ -81,36 +82,42 @@ void TransformSystem::updateTransform(const EntityID& entityID) const
 {
 	Transform& transform = mTransformManager.getComponent(entityID);
 
+	// Check for change in position, rotation, and scale
 	transform.positionChanged = transform.position != transform.lastPosition;
 	transform.rotationChanged = transform.rotation != transform.lastRotation;
 	transform.scaleChanged = transform.scale != transform.lastScale;
-	if (transform.parentID)
+
+	if (transform.parentID) // If transform has a parent
 	{
 		const Transform& parentTransform = mTransformManager.getComponent(transform.parentID);
+		
+		// Position is also changed if it's parents position, rotation, or scale has changed
+		transform.positionChanged |= parentTransform.positionChanged || parentTransform.rotationChanged || parentTransform.scaleChanged; 
+		transform.rotationChanged |= parentTransform.rotationChanged; // Rotation is also changed if it's parents rotation has changed
+		transform.scaleChanged |= parentTransform.scaleChanged; // Scale is also changed if it's parents scale has changed
 
-		transform.positionChanged |= parentTransform.positionChanged || parentTransform.rotationChanged || parentTransform.scaleChanged;
-		transform.rotationChanged |= parentTransform.rotationChanged;
-		transform.scaleChanged |= parentTransform.scaleChanged;
-		if (transform.positionChanged || transform.rotationChanged || transform.scaleChanged)
+		if (transform.positionChanged || transform.rotationChanged || transform.scaleChanged) // If change has occurred
 		{
+			// Transformation matrix must be updated if any one of these changes has occurred
 			transform.matrix = parentTransform.matrix * glm::translate(glm::mat4(1.0f), transform.position) * glm::mat4_cast(transform.rotation) * glm::scale(glm::mat4(1.0f), transform.scale);
 
 			if (transform.positionChanged)
 			{
-				transform.lastPosition = transform.position;
-				transform.worldPosition = parentTransform.worldPosition + transform.position;
+				transform.lastPosition = transform.position; // Update last position
+				transform.worldPosition = parentTransform.worldPosition + transform.position; // Update world position
 			}
 			if (transform.rotationChanged)
 			{
-				transform.lastRotation = transform.rotation;
-				transform.worldRotation = parentTransform.worldRotation * transform.rotation;
+				transform.lastRotation = transform.rotation; // Update last rotation
+				transform.worldRotation = parentTransform.worldRotation * transform.rotation; // Update world rotation
 			}
 			if (transform.scaleChanged)
 			{
-				transform.lastScale = transform.scale;
-				transform.worldScale = parentTransform.worldScale * transform.scale;
+				transform.lastScale = transform.scale; // Update last scale
+				transform.worldScale = parentTransform.worldScale * transform.scale; // Update world scale
 			}
 
+			// Invoke changed callbacks
 			for (unsigned int i = 0; i < transform.changedCallbacks.length; i++)
 				transform.changedCallbacks[i](transform);
 		}
@@ -133,6 +140,7 @@ void TransformSystem::updateTransform(const EntityID& entityID) const
 		}
 	}
 
+	// Update children
 	for (unsigned int i = 0; i < transform.childrenIDs.length; i++)
 		updateTransform(transform.childrenIDs[i]);
 }

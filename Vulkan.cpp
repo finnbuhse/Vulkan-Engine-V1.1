@@ -76,9 +76,9 @@ void writeFile(const char* directory, std::vector<char> content)
 	file.close();
 }
 
-void writeConstants(std::vector<char>& string, const std::vector<Constant>& constants)
+void writeConstants(std::vector<char>& string, const std::vector<ShaderConstant>& constants)
 {
-	for (const Constant& constant : constants)
+	for (const ShaderConstant& constant : constants)
 	{
 		unsigned int nameLength = strlen(constant.name);
 		unsigned int valueLength = strlen(constant.value);

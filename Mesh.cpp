@@ -158,6 +158,14 @@ void Mesh::updateMaterial()
 	#pragma endregion
 }
 
+std::vector<glm::vec3> Mesh::positions()
+{
+	std::vector<glm::vec3> positions;
+	for (unsigned int i = 0; i < nVertices; i++)
+		positions.push_back(vertices[i].position);
+	return positions;
+}
+
 MeshCreateInfo::operator Mesh() const
 {
 	Mesh mesh;
@@ -199,7 +207,8 @@ RenderSystem::RenderSystem()
 
 	/* VULKAN CONFIGURATION */
 	const char* layers[1] = { "VK_LAYER_KHRONOS_validation" };
-	// ** Using required instance extensions only **
+
+	// *INSTANCE EXTENSIONS ARE NOT CONFIGURABLE, CURRENTLY ONLY REQUIRED ARE USED*
 
 	const char* deviceExtensions[1] = { VK_KHR_SWAPCHAIN_EXTENSION_NAME };
 
@@ -1245,12 +1254,12 @@ RenderSystem::RenderSystem()
 
 	VkPipelineColorBlendAttachmentState attachmentBlendState = {};
 	attachmentBlendState.colorWriteMask = 0xf;
-	attachmentBlendState.srcColorBlendFactor = VK_BLEND_FACTOR_ONE;
-	attachmentBlendState.dstColorBlendFactor = VK_BLEND_FACTOR_ONE;
+	attachmentBlendState.srcColorBlendFactor = VK_BLEND_FACTOR_ZERO;
+	attachmentBlendState.dstColorBlendFactor = VK_BLEND_FACTOR_ZERO;
 	attachmentBlendState.colorBlendOp = VK_BLEND_OP_ADD;
-	attachmentBlendState.blendEnable = VK_TRUE;
-	attachmentBlendState.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
-	attachmentBlendState.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+	attachmentBlendState.blendEnable = VK_FALSE;
+	attachmentBlendState.srcAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+	attachmentBlendState.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
 	attachmentBlendState.alphaBlendOp = VK_BLEND_OP_ADD;
 
 	VkPipelineColorBlendStateCreateInfo blendState = {};
@@ -1684,8 +1693,7 @@ void RenderSystem::addMesh(const Entity& entity)
 
 	memoryAllocateInfo.allocationSize = memoryRequirements.size;
 	memoryAllocateInfo.memoryTypeIndex = hostMemoryType;
-	VkResult result = vkAllocateMemory(mDevice, &memoryAllocateInfo, nullptr, &mesh.vertexStagingMemory);
-	validateResult(result);
+	vkAllocateMemory(mDevice, &memoryAllocateInfo, nullptr, &mesh.vertexStagingMemory);
 
 	vkBindBufferMemory(mDevice, mesh.vertexStagingBuffer, mesh.vertexStagingMemory, 0);
 
@@ -2450,4 +2458,12 @@ std::vector<Entity> loadModel(const char* directory)
 	return model;
 }
 
-/* ------------- */
+void applyMaterial(const std::vector<Entity>& model, const Material& material)
+{
+	std::vector<Mesh*> meshes = findComponentsInModel<Mesh>(model);
+	for (Mesh* mesh : meshes)
+	{
+		mesh->material = material;
+		mesh->updateMaterial();
+	}
+}

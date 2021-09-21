@@ -3,48 +3,57 @@
 #include <functional>
 #include <cassert>
 
-typedef unsigned int ComponentID;
-typedef unsigned long long ComponentBit;
+typedef unsigned int ComponentID; // Unique ID assinged to each type of Component
+typedef unsigned long long ComponentBit; // 1 Bit-shifted by ID to indicate position of flag bit in 'Composition' (See Entity.h)
 
-class ComponentManagerBase 
+class ComponentManagerBase
 {
 private:
+	// Incremented on each component manager instantiation, they will not be destroyed until the program terminates because they are all singletons
 	static ComponentID queuedID;
+
+	// Maps all component IDs to polymorphic base pointers referencing each manager instance, mainly to allow all components to be easily removed from an entity when destroyed
 	static std::unordered_map<ComponentID, ComponentManagerBase*> IDInstanceMap;
 
 protected:
 	ComponentManagerBase();
 
 public:
+	// Interface with IDInstanceMap
 	static ComponentManagerBase& componentManagerFromID(const ComponentID& ID);
 
+	// Associated component ID and bit
 	const ComponentID ID;
 	const ComponentBit bit;
 	
 	~ComponentManagerBase();
 	
+	// Virtual removeComponent subroutine to allow for easy removal from componentID via the function 'componentManagerFromID'
 	virtual void removeComponent(const Entity& entity) = 0;
 };
 
+// There is one ComponentManager instance managing the storage of each type of Component, attatched to entities
 template <typename T>
 class ComponentManager : public ComponentManagerBase
 {
 private:
+	// Maps all entities possessing the component type to indexes into the contiguous array 'mComponents' hopefully reducing cache misses when iterating over entities
 	std::unordered_map<EntityID, unsigned int> mEntityIndexMap;
 	std::vector<T> mComponents;
 
+	// Component manager is responsible for notifying all Systems among other things if its respective component type is being added or removed to/from an entity
 	std::vector<std::function<void(const Entity&)>> mComponentAddedCallbacks;
 	std::vector<std::function<void(const Entity&)>> mComponentRemovedCallbacks;
 
 	ComponentManager() {};
 
 public:
+	// Only one instance of each ComponentManager should exist
 	static ComponentManager& instance() 
 	{
 		static ComponentManager instance;
 		return instance;
 	}
-
 	ComponentManager(const ComponentManager& copy) = delete;
 
 	T& addComponent(const Entity& entity, T component)
@@ -84,7 +93,7 @@ public:
 
 		entity.composition() &= ~bit; // Remove component's bit from entity's composition
 		
-		// Find mapping with it's index accessing the last element in 'mComponents' and assign it's index to now be the index of the component being removed
+		// Find mapping with it's index accessing the last element in 'mComponents' and change the index to now be the index of the component being removed
 		for (std::unordered_map<EntityID, unsigned int>::iterator it = mEntityIndexMap.begin(); it != mEntityIndexMap.end(); it++)
 		{
 			if (it->second == mComponents.size() - 1)
@@ -93,11 +102,14 @@ public:
 				break;
 			}
 		}
-		mComponents[IDIterator->second] = mComponents.back(); // Move last component to the index of the component being removed
-		mEntityIndexMap.erase(IDIterator);
-		mComponents.pop_back();
+
+		// Ensures no gaps
+		mComponents[IDIterator->second] = mComponents.back(); // Overwrite component being removed with last component
+		mComponents.pop_back(); // Free last component
+		mEntityIndexMap.erase(IDIterator); // Remove entity's ID mapping
 	}
 
+	// Interface with component added and removed callback arrays
 	std::vector<std::function<void(const Entity& entity)>>::iterator subscribeAddEvent(const std::function<void(const Entity&)>& callback)
 	{
 		mComponentAddedCallbacks.push_back(callback);

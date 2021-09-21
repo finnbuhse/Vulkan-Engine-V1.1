@@ -36,14 +36,28 @@ void print(const std::vector<char>&string);
 
 int find(const std::vector<char>&string, const std::vector<char>&find, const unsigned int& start = 0);
 
+std::vector<std::vector<char>> splitString(const std::vector<char>& string, const std::vector<char>& split);
+
 std::vector<char> readFile(const char* directory);
 
 void writeFile(const char* directory, std::vector<char> content);
 
-struct Constant
+struct ShaderConstant
 {
 	const char* name;
 	const char* value;
 };
 
-void writeConstants(std::vector<char>& string, const std::vector<Constant>& constants);
+void writeConstants(std::vector<char>& string, const std::vector<ShaderConstant>& constants);
+
+template <class T>
+std::size_t hash(const T& value)
+{
+	return std::hash<T>()(value);
+}
+
+template <class T>
+inline void hashCombine(std::size_t& hash, const T& value)
+{
+	hash ^= std::hash<T>()(value) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
+}

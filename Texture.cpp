@@ -2,8 +2,8 @@
 #include "Mesh.h"
 #include "stb_image.h"
 #include "float16.h"
-#include <Windows.h>
 
+// Stores information returned by getFormatInfo, a few parameters that do not seem to be easily retrievable
 struct FormatInfo
 {
 	VkComponentMapping componentMapping;
@@ -91,34 +91,49 @@ FormatInfo getFormatInfo(const VkFormat& format)
 	return formatInfo;
 }
 
-
-
-
-
-
-#include <iostream>
-
 Texture::Texture(const TextureInfo& textureInfo)
 {
 	RenderSystem& renderSystem = RenderSystem::instance();
 	TextureManager& textureManager = TextureManager::instance();
 
+	// Check for format support
 	VkImageFormatProperties formatProperties;
 	assert(("[ERROR] Unsupported texture format", !vkGetPhysicalDeviceImageFormatProperties(renderSystem.mPhysicalDevice, textureInfo.format, VK_IMAGE_TYPE_2D, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, 0, &formatProperties)));
 	
-	FormatInfo formatInfo = getFormatInfo(textureInfo.format);
+	const FormatInfo formatInfo = getFormatInfo(textureInfo.format);
 
 	#pragma region Create texture resources
 	stbi_set_flip_vertically_on_load(false);
 
 	// Load image
 	int width, height, channels;
-	unsigned char* textureData = stbi_load(textureInfo.directory.c_str(), &width, &height, &channels, formatInfo.nChannels);
+	void* textureData = nullptr;
+	const bool hdr = textureInfo.format == VK_FORMAT_R16_SFLOAT || textureInfo.format == VK_FORMAT_R16G16_SFLOAT || textureInfo.format == VK_FORMAT_R16G16B16_SFLOAT || textureInfo.format == VK_FORMAT_R16G16B16A16_SFLOAT || textureInfo.format == VK_FORMAT_R32_SFLOAT || textureInfo.format == VK_FORMAT_R32G32_SFLOAT || textureInfo.format == VK_FORMAT_R32G32B32_SFLOAT || textureInfo.format == VK_FORMAT_R32G32B32A32_SFLOAT;
+	if (hdr)
+	{
+		if (formatInfo.bytesPerChannel == 4)
+			textureData = stbi_loadf(textureInfo.directory.c_str(), &width, &height, &channels, formatInfo.nChannels);
+		else if (formatInfo.bytesPerChannel == 2)
+		{
+			float* data = stbi_loadf(textureInfo.directory.c_str(), &width, &height, &channels, formatInfo.nChannels);
+
+			// Convert floats to float16s before being copied into staging buffer
+			const unsigned long long nElements = unsigned long long(width) * height * formatInfo.nChannels;
+			textureData = new float16[nElements];
+			for (unsigned long long j = 0; j < nElements; j++)
+				((float16*)textureData)[j] = floatToFloat16(data[j]);
+
+			stbi_image_free((void*)data); // Free temporary data, texture data is freed later
+		}
+	}
+	else
+		textureData = stbi_load(textureInfo.directory.c_str(), &width, &height, &channels, formatInfo.nChannels);
 	assert(("[ERROR] STBI failed to load image", textureData));
 
-	VkDeviceSize imageSize = width * height * formatInfo.nChannels * formatInfo.bytesPerChannel; // Assuming byte per channel
-	unsigned int nMips = unsigned int(std::floor(std::log2(width > height ? width : height))) + 1;
+	const VkDeviceSize imageSize = width * height * formatInfo.nChannels * formatInfo.bytesPerChannel;
+	const unsigned int nMips = unsigned int(std::floor(std::log2(width > height ? width : height))) + 1;
 
+	// Check format support for dimensions and image size
 	assert(("[ERROR] Unsupported texture format", formatProperties.maxExtent.width >= width && formatProperties.maxExtent.height >= height && formatProperties.maxExtent.depth >= 1 && formatProperties.maxMipLevels >= 1 && formatProperties.maxArrayLayers >= 1 && formatProperties.sampleCounts & VK_SAMPLE_COUNT_1_BIT && formatProperties.maxResourceSize >= imageSize));
 
 	// Create image
@@ -138,8 +153,8 @@ Texture::Texture(const TextureInfo& textureInfo)
 	imageCreateInfo.queueFamilyIndexCount = 0;
 	imageCreateInfo.pQueueFamilyIndices = nullptr;
 	imageCreateInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-	
-	vkCreateImage(renderSystem.mDevice, &imageCreateInfo, nullptr, &mImage);
+	VkResult result = vkCreateImage(renderSystem.mDevice, &imageCreateInfo, nullptr, &mImage);
+	validateResult(result)
 
 	VkMemoryRequirements memoryRequirements;
 	vkGetImageMemoryRequirements(renderSystem.mDevice, mImage, &memoryRequirements);
@@ -148,9 +163,11 @@ Texture::Texture(const TextureInfo& textureInfo)
 	memoryAllocateInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
 	memoryAllocateInfo.allocationSize = memoryRequirements.size;
 	memoryAllocateInfo.memoryTypeIndex = memoryTypeFromProperties(renderSystem.mPhysicalDeviceMemoryProperties, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-	vkAllocateMemory(renderSystem.mDevice, &memoryAllocateInfo, nullptr, &mImageMemory);
-
-	vkBindImageMemory(renderSystem.mDevice, mImage, mImageMemory, 0);
+	result = vkAllocateMemory(renderSystem.mDevice, &memoryAllocateInfo, nullptr, &mImageMemory);
+	validateResult(result);
+	
+	result = vkBindImageMemory(renderSystem.mDevice, mImage, mImageMemory, 0);
+	validateResult(result);
 
 	// Create staging buffer
 	VkBuffer stagingBuffer;
@@ -165,16 +182,20 @@ Texture::Texture(const TextureInfo& textureInfo)
 	bufferCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 	bufferCreateInfo.queueFamilyIndexCount = 0;
 	bufferCreateInfo.pQueueFamilyIndices = nullptr;
-	vkCreateBuffer(renderSystem.mDevice, &bufferCreateInfo, nullptr, &stagingBuffer);
+	result = vkCreateBuffer(renderSystem.mDevice, &bufferCreateInfo, nullptr, &stagingBuffer);
+	validateResult(result);
 
 	vkGetBufferMemoryRequirements(renderSystem.mDevice, stagingBuffer, &memoryRequirements);
 
 	memoryAllocateInfo.allocationSize = memoryRequirements.size;
 	memoryAllocateInfo.memoryTypeIndex = memoryTypeFromProperties(renderSystem.mPhysicalDeviceMemoryProperties, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-	vkAllocateMemory(renderSystem.mDevice, &memoryAllocateInfo, nullptr, &stagingMemory);
+	result = vkAllocateMemory(renderSystem.mDevice, &memoryAllocateInfo, nullptr, &stagingMemory);
+	validateResult(result);
 
-	vkBindBufferMemory(renderSystem.mDevice, stagingBuffer, stagingMemory, 0);
+	result = vkBindBufferMemory(renderSystem.mDevice, stagingBuffer, stagingMemory, 0);
+	validateResult(result);
 
+	// Copy textureData into staging buffer
 	unsigned char* data;
 	vkMapMemory(renderSystem.mDevice, stagingMemory, 0, imageSize, 0, (void**)&data);
 	memcpy(data, textureData, imageSize);
@@ -188,7 +209,8 @@ Texture::Texture(const TextureInfo& textureInfo)
 	commandBufferBeginInfo.pNext = nullptr;
 	commandBufferBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 	commandBufferBeginInfo.pInheritanceInfo = nullptr;
-	vkBeginCommandBuffer(textureManager.mCommandBuffer, &commandBufferBeginInfo);
+	result = vkBeginCommandBuffer(textureManager.mCommandBuffer, &commandBufferBeginInfo);
+	validateResult(result);
 
 	VkImageMemoryBarrier barrier = {};
 	barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
@@ -264,7 +286,8 @@ Texture::Texture(const TextureInfo& textureInfo)
 		vkCmdPipelineBarrier(textureManager.mCommandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, &barrier);
 	}
 
-	vkEndCommandBuffer(textureManager.mCommandBuffer);
+	result = vkEndCommandBuffer(textureManager.mCommandBuffer);
+	validateResult(result);
 
 	VkSubmitInfo submitInfo = {};
 	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
@@ -276,7 +299,8 @@ Texture::Texture(const TextureInfo& textureInfo)
 	submitInfo.pCommandBuffers = &textureManager.mCommandBuffer;
 	submitInfo.signalSemaphoreCount = 0;
 	submitInfo.pSignalSemaphores = nullptr;
-	vkQueueSubmit(renderSystem.mGraphicsQueue, 1, &submitInfo, VK_NULL_HANDLE);
+	result = vkQueueSubmit(renderSystem.mGraphicsQueue, 1, &submitInfo, VK_NULL_HANDLE);
+	validateResult(result);
 
 	// Create image view
 	VkImageViewCreateInfo imageViewCreateInfo = {};
@@ -292,7 +316,8 @@ Texture::Texture(const TextureInfo& textureInfo)
 	imageViewCreateInfo.subresourceRange.levelCount = nMips;
 	imageViewCreateInfo.subresourceRange.baseArrayLayer = 0;
 	imageViewCreateInfo.subresourceRange.layerCount = 1;
-	vkCreateImageView(renderSystem.mDevice, &imageViewCreateInfo, nullptr, &mImageView);
+	result = vkCreateImageView(renderSystem.mDevice, &imageViewCreateInfo, nullptr, &mImageView);
+	validateResult(result);
 
 	// Create sampler
 	VkSamplerCreateInfo samplerCreateInfo = {};
@@ -313,10 +338,16 @@ Texture::Texture(const TextureInfo& textureInfo)
 	samplerCreateInfo.compareEnable = VK_FALSE;
 	samplerCreateInfo.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
 	samplerCreateInfo.unnormalizedCoordinates = VK_FALSE;
-	vkCreateSampler(renderSystem.mDevice, &samplerCreateInfo, nullptr, &mSampler);
+	result = vkCreateSampler(renderSystem.mDevice, &samplerCreateInfo, nullptr, &mSampler);
+	validateResult(result);
 
-	vkQueueWaitIdle(renderSystem.mGraphicsQueue);
-	vkResetCommandBuffer(textureManager.mCommandBuffer, 0);
+	// Wait idle until command buffer finishes so it can be reset, further increases the benefit of a seperate texture thread as the main thread would not have to wait
+	result = vkQueueWaitIdle(renderSystem.mGraphicsQueue);
+	validateResult(result);
+
+	// Reset command buffer for next use
+	result = vkResetCommandBuffer(textureManager.mCommandBuffer, 0); 
+	validateResult(result);
 
 	vkDestroyBuffer(renderSystem.mDevice, stagingBuffer, nullptr);
 	vkFreeMemory(renderSystem.mDevice, stagingMemory, nullptr);
@@ -344,8 +375,8 @@ Cubemap::Cubemap(CubemapInfo cubemapInfo)
     #pragma region Create cubemap resources
 	stbi_set_flip_vertically_on_load(true);
 
-	void* textureData[6];
 	// Load images
+	void* textureData[6];
 	int width, height, channels;
 	bool hdr = cubemapInfo.format == VK_FORMAT_R16_SFLOAT || cubemapInfo.format == VK_FORMAT_R16G16_SFLOAT || cubemapInfo.format == VK_FORMAT_R16G16B16_SFLOAT || cubemapInfo.format == VK_FORMAT_R16G16B16A16_SFLOAT || cubemapInfo.format == VK_FORMAT_R32_SFLOAT || cubemapInfo.format == VK_FORMAT_R32G32_SFLOAT || cubemapInfo.format == VK_FORMAT_R32G32B32_SFLOAT || cubemapInfo.format == VK_FORMAT_R32G32B32A32_SFLOAT;
 	if (hdr)
@@ -355,6 +386,7 @@ Cubemap::Cubemap(CubemapInfo cubemapInfo)
 			for (unsigned int i = 0; i < 6; i++)
 			{
 				textureData[i] = stbi_loadf(cubemapInfo.directories[i].c_str(), &width, &height, &channels, formatInfo.nChannels);
+				assert(("[ERROR] STBI failed to load image", textureData[i]));
 			}
 		}
 		else if (formatInfo.bytesPerChannel == 2)
@@ -362,13 +394,13 @@ Cubemap::Cubemap(CubemapInfo cubemapInfo)
 			for (unsigned int i = 0; i < 6; i++)
 			{
 				float* data = stbi_loadf(cubemapInfo.directories[i].c_str(), &width, &height, &channels, formatInfo.nChannels);
-				unsigned long long dataSize = unsigned long long(width) * height * formatInfo.nChannels;
+				assert(("[ERROR] STBI failed to load image", data));
 
-				textureData[i] = new float16[dataSize];
-				for (unsigned long long j = 0; j < dataSize; j++)
-				{
+				const unsigned long long nElements = unsigned long long(width) * height * formatInfo.nChannels;
+				textureData[i] = new float16[nElements];
+				for (unsigned long long j = 0; j < nElements; j++)
 					((float16*)textureData[i])[j] = floatToFloat16(data[j]);
-				}
+
 				stbi_image_free((void*)data);
 			}
 		}
@@ -378,10 +410,11 @@ Cubemap::Cubemap(CubemapInfo cubemapInfo)
 		for (unsigned int i = 0; i < 6; i++)
 		{
 			textureData[i] = stbi_load(cubemapInfo.directories[i].c_str(), &width, &height, &channels, formatInfo.nChannels);
+			assert(("[ERROR] STBI failed to load image", textureData[i]));
 		}
 	}
 
-	unsigned long long layerSize = unsigned long long(width) * height * formatInfo.nChannels * formatInfo.bytesPerChannel;
+	const unsigned long long layerSize = unsigned long long(width) * height * formatInfo.nChannels * formatInfo.bytesPerChannel;
 	const VkDeviceSize imageSize = 6 * layerSize;
 	const unsigned int nMips = unsigned int(std::floor(std::log2(width > height ? width : height))) + 1;
 
@@ -446,6 +479,7 @@ Cubemap::Cubemap(CubemapInfo cubemapInfo)
 	result = vkBindBufferMemory(renderSystem.mDevice, stagingBuffer, stagingMemory, 0);
 	validateResult(result);
 
+	// Copy textureData into staging buffer
 	unsigned char* data;
 	result = vkMapMemory(renderSystem.mDevice, stagingMemory, 0, imageSize, 0, (void**)&data);
 	validateResult(result);
@@ -458,6 +492,7 @@ Cubemap::Cubemap(CubemapInfo cubemapInfo)
 
 	vkUnmapMemory(renderSystem.mDevice, stagingMemory);
 
+	// Copy staging buffer to image, generate mipmaps, transfer layout
 	result = vkBeginCommandBuffer(textureManager.mCommandBuffer, &renderSystem.mCommandBufferBeginInfo);
 	validateResult(result);
 
@@ -465,7 +500,7 @@ Cubemap::Cubemap(CubemapInfo cubemapInfo)
 	barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
 	barrier.pNext = nullptr;
 	barrier.srcAccessMask = 0;
-	barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT /* Additional >> */ | VK_ACCESS_TRANSFER_READ_BIT;
+	barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
 	barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 	barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
 	barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
@@ -614,6 +649,7 @@ TextureManager::TextureManager()
 {
 	RenderSystem& renderSystem = RenderSystem::instance();
 
+	// Create command pool and command buffer
 	vkCreateCommandPool(renderSystem.mDevice, &renderSystem.mGraphicsCommandPoolCreateInfo, nullptr, &mCommandPool);
 
 	VkCommandBufferAllocateInfo commandBufferAllocateInfo = {};
@@ -633,7 +669,7 @@ TextureManager& TextureManager::instance()
 
 TextureManager::~TextureManager()
 {
-
+	// Destroy all textures and cubemaps freeing their memory
 	for (const std::pair<TextureInfo, Texture*>& pair : mTextures)
 		delete pair.second;
 	for (const std::pair<CubemapInfo, Cubemap*>& pair : mCubemaps)
@@ -646,6 +682,7 @@ TextureManager::~TextureManager()
 
 Texture& TextureManager::getTexture(const TextureInfo& textureInfo)
 {
+	// Return texture in map if it already exists. Otherwise create a new texture, add it to the map, and return it
 	std::unordered_map<TextureInfo, Texture*>::iterator textureIterator = mTextures.find(textureInfo);
 	if (textureIterator != mTextures.end())
 		return *textureIterator->second;

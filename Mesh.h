@@ -1,4 +1,6 @@
 #pragma once
+/* *NOTE* Camera.h includes the most detailed explanation of a component and system example */
+
 #include "Texture.h"
 #include "Vulkan.h"
 #include "Camera.h"
@@ -33,18 +35,21 @@ struct Vertex
 
 struct Mesh
 {
+	// Vertex buffer stores vertices
 	VkBuffer vertexBuffer;
 	VkDeviceMemory vertexMemory;
 	VkBuffer vertexStagingBuffer;
 	VkDeviceMemory vertexStagingMemory;
 	Vertex* vertices;
 
+	// Index buffer stores indices
 	VkBuffer indexBuffer;
 	VkDeviceMemory indexMemory;
 	VkBuffer indexStagingBuffer;
 	VkDeviceMemory indexStagingMemory;
 	unsigned int* indices;
 
+	// Uniform buffer stores model and normal matrix
 	VkBuffer uniformBuffer;
 	VkDeviceMemory uniformMemory;
 	VkBuffer uniformStagingBuffer;
@@ -60,8 +65,10 @@ struct Mesh
 
 	unsigned int transformChangedCallbackIndex;
 
-	void updateBuffers();
-	void updateMaterial();
+	void updateBuffers(); // Should be called if vertices or indices are changed
+	void updateMaterial(); // Should be called if the material is changed
+
+	std::vector<glm::vec3> positions();
 };
 
 struct MeshCreateInfo
@@ -75,6 +82,7 @@ struct MeshCreateInfo
 
 struct DirectionalLight
 {
+	// Uniform buffer stores colour and direction
 	VkBuffer uniformBuffer;
 	VkDeviceMemory uniformMemory;
 	VkBuffer uniformStagingBuffer;
@@ -104,8 +112,11 @@ private:
 	friend class Cubemap;
 	friend class TextureManager;
 
+	/* RenderSystem behaves as a system not only for Meshes but also lights as updating them is primitive but they are very involved in the lighting pass
+	   So it makes sense to have them as member variables */
 	Composition mMeshComposition;
 	Composition mDirectionalLightComposition;
+
 	std::vector<EntityID> mMeshIDs;
 	std::vector<EntityID> mDirectionalLightIDs;
 
@@ -239,6 +250,7 @@ public:
 private:
 	void addMesh(const Entity& entity);
 	void removeMesh(const std::vector<EntityID>::iterator& IDIterator);
+
 	void addDirectionalLight(const Entity& entity);
 	void removeDirectionalLight(const std::vector<EntityID>::iterator& IDIterator);
 
@@ -271,4 +283,18 @@ public:
 
 std::vector<Entity> loadModel(const char* directory);
 
-#define destroyModel(m) for (const Entity& entity : m) entity.destroy();
+#define destroyModel(model) for (const Entity& entity : model) entity.destroy();
+
+template <typename T>
+std::vector<T*> findComponentsInModel(const std::vector<Entity>& model)
+{
+	std::vector<T*> components;
+	for (std::vector<Entity>::const_reverse_iterator it = model.rbegin(); it != model.rend(); it++)
+	{
+		if ((*it).hasComponent<T>())
+			components.push_back(&((*it).getComponent<T>()));
+	}
+	return components;
+}
+
+void applyMaterial(const std::vector<Entity>& model, const Material& material);

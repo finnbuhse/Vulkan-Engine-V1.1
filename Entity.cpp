@@ -47,8 +47,8 @@ void Entity::destroy() const
 		bit <<= 1;
 	}
 
-	compositions.erase(mID);
-	queuedIDs.push_back(mID);
+	compositions.erase(mID); // Remove entity's composition entry in map
+	queuedIDs.push_back(mID); // Add ID to queue to be reused
 }
 
 bool Entity::operator==(const Entity& other) const

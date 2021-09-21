@@ -1,12 +1,13 @@
 #pragma once
 #include <cassert>
 
+// Basic POD dynamic array struct
 template <typename T>
 struct Vector
 {
 	T* data;
-	unsigned int size;
-	unsigned int length;
+	unsigned int size; // Size of data allocated in bytes
+	unsigned int length; // Number of elements
 
 	void initialize(const unsigned int& nElements = 0)
 	{

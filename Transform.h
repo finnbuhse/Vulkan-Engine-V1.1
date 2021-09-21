@@ -5,15 +5,20 @@
 #include "glm/gtc/quaternion.hpp"
 
 struct Transform
-{
-	Vector<EntityID> childrenIDs;
+{   /* Dynamic array storing the entity IDs of the transform's children.
+	   IDs should NOT be directly appended and removed from the array but one should use addChild and removeChild */
+	Vector<EntityID> childrenIDs; 
+
+	/* Dynamic array of callbacks to invoke upon change.
+	   Callbacks should NOT be directly appended and removed from the array but one should use subscribeChangedEvent and unsubscribeChangedEvent */
 	Vector<std::function<void(const Transform&)>> changedCallbacks;
 
-	EntityID entityID;
-	EntityID parentID;
+	EntityID entityID; // The transform's entity's ID
+	EntityID parentID; // The transform's parent's ID
 
-	glm::mat4 matrix;
+	glm::mat4 matrix; // Matrix representing the translation, rotation, and enlargment to transform the object from the origin with no rotation and scale to its final state in world space
 
+	// Detect change by comparing with last frame
 	glm::vec3 lastPosition;
 	glm::quat lastRotation;
 	glm::vec3 lastScale;
@@ -26,6 +31,7 @@ struct Transform
 	glm::quat worldRotation;
 	glm::vec3 worldScale;
 
+	// Flags set before changed event invoking changed callbacks
 	bool positionChanged;
 	bool rotationChanged;
 	bool scaleChanged;
@@ -37,9 +43,11 @@ struct Transform
 	void rotate(const float& angle, const glm::vec3& axis);
 	void enlarge(const glm::vec3& factor);
 
+	// Interface with childrenIDs
 	void addChild(const Entity& child);
 	void removeChild(const Entity& child);
 
+	// Interface with changedCallbacks
 	unsigned int subscribeChangedEvent(const std::function<void(const Transform&)>& callback);
 	void unsubscribeChangedEvent(const unsigned int& index);
 };
@@ -57,10 +65,8 @@ class TransformSystem
 {
 private:
 	friend Transform;
-
-	/* Contains only parent transforms, once updated each transform updates its children this ensures
-	   that when a transform is updated its parent is already up to date */
-	std::vector<EntityID> mEntityIDs;
+	
+	std::vector<EntityID> mEntityIDs; // Includes all transforms that have no parent, but may have children
 
 	ComponentManager<Transform>& mTransformManager = ComponentManager<Transform>::instance();
 
