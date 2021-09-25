@@ -4,6 +4,9 @@
 #include "glm/glm.hpp"
 #include "glm/gtc/quaternion.hpp"
 
+void printMat4(const glm::mat4& matrix);
+void printVec3(const glm::vec3& vec3);
+
 struct Transform
 {   /* Dynamic array storing the entity IDs of the transform's children.
 	   IDs should NOT be directly appended and removed from the array but one should use addChild and removeChild */

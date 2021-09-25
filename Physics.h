@@ -2,17 +2,9 @@
 #include "PxPhysicsAPI.h"
 #include "foundation/PxAllocatorCallback.h"
 
-class PxAllocator : public physx::PxAllocatorCallback
-{
-public:
-	void* allocate(size_t size, const char* typeName, const char* filename, int line) override;
-	void deallocate(void* ptr) override;
-};
-
-class PxErrorHandler : public physx::PxErrorCallback
-{
-	void reportError(physx::PxErrorCode::Enum code, const char* message, const char* file, int line) override;
-};
+#define SIMULATION_STEP 0.01666666666f // (1/60) 60 Frames per second
+#define PX_RECORD_MEMORY_ALLOCATIONS true
+#define PX_THREADS 2
 
 struct PxMaterialInfo
 {
@@ -37,43 +29,54 @@ struct PxMaterialInfoHasher
 	};
 };
 
+enum RigidBodyType {STATIC, DYNAMIC, KINEMATIC};
+
 struct RigidBody
 {
+	RigidBodyType type;
 	Mesh* mesh;
-	PxMaterialInfo materialInfo;
-	physx::PxMaterial* material;
+	unsigned char maxVertices;
+	physx::PxConvexMesh* pxMesh;
+	PxMaterialInfo material;
+	physx::PxRigidActor* pxRigidBody; // Either static or dynamic rigid body
+	float density; // Unused for static rigid bodies
 };
 
-struct RigidBodyStatic : public RigidBody
-{
-	physx::PxRigidStatic* pxRigidBody;
-};
-
-struct RigidBodyDynamic : public RigidBody
-{
-	float density;
-	physx::PxRigidDynamic* pxRigidBody;
-};
-
-struct RigidBodyCreateInfo
+struct StaticRigidBodyCreateInfo
 {
 	Mesh* mesh;
-	PxMaterialInfo materialInfo;
-	float density = 0.0f; // Not used in RigidBodyStatic
+	unsigned char maxVertices;
+	PxMaterialInfo material;
 
-	operator RigidBodyStatic()
+	operator RigidBody()
 	{
-		RigidBodyStatic rigidBody;
+		RigidBody rigidBody;
+		rigidBody.type = STATIC;
 		rigidBody.mesh = mesh;
-		rigidBody.materialInfo = materialInfo;
+		rigidBody.maxVertices = maxVertices;
+		rigidBody.material = material;
 		return rigidBody;
 	}
+};
 
-	operator RigidBodyDynamic()
+struct DynamicRigidBodyCreateInfo
+{
+	Mesh* mesh;
+	unsigned char maxVertices;
+	PxMaterialInfo material;
+	float density;
+	bool kinematic = false;
+
+	operator RigidBody()
 	{
-		RigidBodyDynamic rigidBody;
+		RigidBody rigidBody;
+		if (kinematic)
+			rigidBody.type = KINEMATIC;
+		else
+			rigidBody.type = DYNAMIC;
 		rigidBody.mesh = mesh;
-		rigidBody.materialInfo = materialInfo;
+		rigidBody.maxVertices = maxVertices;
+		rigidBody.material = material;
 		rigidBody.density = density;
 		return rigidBody;
 	}
@@ -83,15 +86,15 @@ class PhysicsSystem
 {
 private:
 	std::unordered_map<PxMaterialInfo, physx::PxMaterial*, PxMaterialInfoHasher> mMaterials;
-	std::unordered_map<Mesh*, physx::PxShape*> mShapes;
+
 	std::vector<EntityID> mEntityIDs;
+	Composition mComposition;
 	ComponentManager<Transform>& mTransformManager = ComponentManager<Transform>::instance();
 	ComponentManager<Mesh>& mMeshManager = ComponentManager<Mesh>::instance();
-	ComponentManager<RigidBodyStatic>& mRigidStaticManager = ComponentManager<RigidBodyStatic>::instance();
-	ComponentManager<RigidBodyDynamic>& mRigidDynamicManager = ComponentManager<RigidBodyDynamic>::instance();
-
-	PxAllocator allocator;
-	PxErrorHandler errorHandler;
+	ComponentManager<RigidBody>& mRigidBodyManager = ComponentManager<RigidBody>::instance();
+	
+	physx::PxDefaultAllocator allocatorCallback;
+	physx::PxDefaultErrorCallback errorCallback;
 	physx::PxFoundation* foundation;
 	physx::PxPvd* pvd;
 	physx::PxPhysics* physics;
@@ -99,6 +102,8 @@ private:
 	physx::PxCooking* cooking;
 	physx::PxCpuDispatcher* cpuDispatcher;
 	physx::PxPvdSceneClient* pvdSceneClient;
+
+	float accumulator = 0;
 
 	PhysicsSystem();
 
@@ -109,7 +114,6 @@ public:
 	~PhysicsSystem();
 
 	physx::PxMaterial* getMaterial(const PxMaterialInfo& materialInfo);
-	physx::PxShape* getShape(Mesh* mesh, physx::PxMaterial* material);
 
 	void componentAdded(const Entity& entity);
 	void componentRemoved(const Entity& entity);

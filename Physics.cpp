@@ -3,45 +3,31 @@
 #include "pvd\PxPvd.h"
 #include <iostream>
 
-#define PX_RECORD_MEMORY_ALLOCATIONS true
-#define PX_THREADS 2
-
-void* PxAllocator::allocate(size_t size, const char* typeName, const char* filename, int line)
-{
-	return physx::platformAlignedAlloc(size);
-}
-
-void PxAllocator::deallocate(void* ptr)
-{
-	physx::platformAlignedFree(ptr);
-}
-
-void PxErrorHandler::reportError(physx::PxErrorCode::Enum code, const char* message, const char* file, int line)
-{
-	std::cout << "[PHYSX ERROR " << code << "] " << message << " Occurred in " << file << " line " << line << std::endl;
-	assert(false);
-}
-
 PhysicsSystem::PhysicsSystem()
 {
     mTransformManager.subscribeAddEvent(std::bind(&PhysicsSystem::componentAdded, this, std::placeholders::_1));
     mTransformManager.subscribeRemoveEvent(std::bind(&PhysicsSystem::componentRemoved, this, std::placeholders::_1));
 	mMeshManager.subscribeAddEvent(std::bind(&PhysicsSystem::componentAdded, this, std::placeholders::_1));
 	mMeshManager.subscribeRemoveEvent(std::bind(&PhysicsSystem::componentRemoved, this, std::placeholders::_1));
-    mRigidStaticManager.subscribeAddEvent(std::bind(&PhysicsSystem::componentAdded, this, std::placeholders::_1));
-    mRigidStaticManager.subscribeRemoveEvent(std::bind(&PhysicsSystem::componentRemoved, this, std::placeholders::_1));
-	mRigidDynamicManager.subscribeAddEvent(std::bind(&PhysicsSystem::componentAdded, this, std::placeholders::_1));
-	mRigidDynamicManager.subscribeRemoveEvent(std::bind(&PhysicsSystem::componentRemoved, this, std::placeholders::_1));
+    mRigidBodyManager.subscribeAddEvent(std::bind(&PhysicsSystem::componentAdded, this, std::placeholders::_1));
+    mRigidBodyManager.subscribeRemoveEvent(std::bind(&PhysicsSystem::componentRemoved, this, std::placeholders::_1));
+
+	mComposition = mTransformManager.bit | mRigidBodyManager.bit;
 
 	// PhysX Initialization
-	foundation = PxCreateFoundation(PX_PHYSICS_VERSION, allocator, errorHandler);
+	physx::PxDefaultAllocator();
+
+	foundation = PxCreateFoundation(PX_PHYSICS_VERSION, allocatorCallback, errorCallback);
 	assert(foundation, "[ERROR] PhysX foundation creation failed");
 
 	pvd = physx::PxCreatePvd(*foundation);
-	physx::PxPvdTransport* transport = physx::PxDefaultPvdSocketTransportCreate("192.168.1.83", 5425, 10);
+	physx::PxPvdTransport* transport = physx::PxDefaultPvdSocketTransportCreate("127.0.0.1", 5425, 10);
 	pvd->connect(*transport, physx::PxPvdInstrumentationFlag::eALL);
 
-	physx::PxTolerancesScale scale = physx::PxTolerancesScale();
+	physx::PxTolerancesScale scale;
+	scale.length = 100.0f;
+	scale.speed = 981.0f;
+
 	physics = PxCreatePhysics(PX_PHYSICS_VERSION, *foundation, scale, PX_RECORD_MEMORY_ALLOCATIONS, pvd);
 	assert(physics, "[ERROR] PhysX physics creation failed");
 
@@ -56,21 +42,18 @@ PhysicsSystem::PhysicsSystem()
 	scene = physics->createScene(sceneDesc);
 
 	pvdSceneClient = scene->getScenePvdClient();
-	if (pvdSceneClient)
-	{
-		pvdSceneClient->setScenePvdFlag(physx::PxPvdSceneFlag::eTRANSMIT_CONSTRAINTS, true);
-		pvdSceneClient->setScenePvdFlag(physx::PxPvdSceneFlag::eTRANSMIT_CONTACTS, true);
-		pvdSceneClient->setScenePvdFlag(physx::PxPvdSceneFlag::eTRANSMIT_SCENEQUERIES, true);
-	}
+	assert(pvdSceneClient, "[ERROR] PhysX pvd creation failed");
+	pvdSceneClient->setScenePvdFlag(physx::PxPvdSceneFlag::eTRANSMIT_CONSTRAINTS, true);
+	pvdSceneClient->setScenePvdFlag(physx::PxPvdSceneFlag::eTRANSMIT_CONTACTS, true);
+	pvdSceneClient->setScenePvdFlag(physx::PxPvdSceneFlag::eTRANSMIT_SCENEQUERIES, true);
 }
 
 PhysicsSystem::~PhysicsSystem()
 {
-	for (const std::pair<Mesh*, physx::PxShape*>& shape : mShapes)
-		shape.second->release();
 	for (const std::pair<PxMaterialInfo, physx::PxMaterial*>& material : mMaterials)
 		material.second->release();
 	cooking->release();
+	scene->release();
 	physics->release();
 	pvd->release();
 	foundation->release();
@@ -92,69 +75,51 @@ physx::PxMaterial* PhysicsSystem::getMaterial(const PxMaterialInfo& materialInfo
 	return material;
 }
 
-physx::PxShape* PhysicsSystem::getShape(Mesh* mesh, physx::PxMaterial* material) // Note: Same mesh should have same material. Passed in for shape creation
-{
-	std::unordered_map<Mesh*, physx::PxShape*>::iterator shapeIterator = mShapes.find(mesh);
-	if (shapeIterator != mShapes.end())
-		return shapeIterator->second;
-
-	physx::PxShape* shape;
-
-	physx::PxTriangleMeshDesc meshDesc;
-	meshDesc.points.count = mesh->nVertices;
-	meshDesc.points.stride = sizeof(physx::PxVec3);
-	meshDesc.points.data = mesh->positions().data();
-
-	meshDesc.triangles.count = mesh->nIndices / 3;
-	meshDesc.triangles.stride = sizeof(unsigned int) * 3;
-	meshDesc.triangles.data = mesh->indices;
-
-	assert(meshDesc.isValid(), "[ERROR PHYSX] Invalid mesh descriptor");
-
-	physx::PxDefaultMemoryOutputStream writeBuffer;
-	physx::PxTriangleMeshCookingResult::Enum result;
-	bool status = cooking->cookTriangleMesh(meshDesc, writeBuffer, &result);
-	assert(status, "[ERROR PHYSX] Triangle mesh cook failed");
-	assert(result, "[ERROR PHYSX] Triangle mesh cook failed");
-
-	physx::PxDefaultMemoryInputData readBuffer(writeBuffer.getData(), writeBuffer.getSize());
-
-	physx::PxTriangleMeshGeometry geometry(physics->createTriangleMesh(readBuffer));
-	shape = physics->createShape(geometry, *material);
-
-	mShapes.insert({ mesh, shape });
-
-	return shape;
-}
-
 void PhysicsSystem::componentAdded(const Entity& entity)
-{
-	Composition entityComposition = entity.composition();
-	if ((entityComposition & mTransformManager.bit) == mTransformManager.bit && (entityComposition & mMeshManager.bit) == mMeshManager.bit)
+{ 
+	if ((entity.composition() & mComposition) == mComposition)
 	{
-		if ((entityComposition & mRigidStaticManager.bit) == mRigidStaticManager.bit)
+		Transform& transform = entity.getComponent<Transform>();
+		const physx::PxTransform pxTransform(physx::PxVec3{ transform.position.x, transform.position.y, transform.position.z }, physx::PxQuat{ transform.rotation.x, transform.rotation.y, transform.rotation.z, transform.rotation.w });
+
+		RigidBody& rigidBody = entity.getComponent<RigidBody>();
+		
+		std::vector<glm::vec3> positions = rigidBody.mesh->positions();
+
+		physx::PxConvexMeshDesc meshDesc;
+		meshDesc.points.count = rigidBody.mesh->nVertices;
+		meshDesc.points.stride = sizeof(physx::PxVec3);
+		meshDesc.points.data = positions.data();
+		meshDesc.vertexLimit = rigidBody.maxVertices;
+		meshDesc.flags = physx::PxConvexFlag::eCOMPUTE_CONVEX;
+
+		assert(meshDesc.isValid(), "[ERROR PHYSX] Invalid mesh descriptor");
+
+		physx::PxDefaultMemoryOutputStream writeBuffer;
+		physx::PxConvexMeshCookingResult::Enum result;
+		bool status = cooking->cookConvexMesh(meshDesc, writeBuffer, &result);
+		assert(status, "[ERROR PHYSX] Convex mesh cook failed");
+		assert(!result, "[ERROR PHYSX] Convex mesh cook failed");
+
+		physx::PxDefaultMemoryInputData readBuffer(writeBuffer.getData(), writeBuffer.getSize());
+		rigidBody.pxMesh = physics->createConvexMesh(readBuffer);
+		
+		physx::PxConvexMeshGeometry geometry(rigidBody.pxMesh, physx::PxMeshScale({ transform.scale.x, transform.scale.y, transform.scale.z }));
+
+		if (rigidBody.type == STATIC)
 		{
-			Transform& transform = entity.getComponent<Transform>();
-			RigidBodyStatic& rigidBody = entity.getComponent<RigidBodyStatic>();
-
-			rigidBody.material = getMaterial(rigidBody.materialInfo);
-
-			const physx::PxTransform pxTransform(physx::PxVec3{ transform.position.x, transform.position.y, transform.position.z }, physx::PxQuat{ transform.rotation.x, transform.rotation.y, transform.rotation.z, transform.rotation.w });
-			rigidBody.pxRigidBody = physx::PxCreateStatic(*physics, pxTransform, *getShape(rigidBody.mesh, rigidBody.material));
-			mEntityIDs.push_back(entity.ID());
+			rigidBody.pxRigidBody = physx::PxCreateStatic(*physics, pxTransform, geometry, *getMaterial(rigidBody.material));
+			assert(rigidBody.pxRigidBody, "[ERROR PHYSX] Rigid body creation failed");
 		}
-		else if ((entityComposition & mRigidDynamicManager.bit) == mRigidDynamicManager.bit)
+		else
 		{
-			Transform& transform = entity.getComponent<Transform>();
-			RigidBodyDynamic& rigidBody = entity.getComponent<RigidBodyDynamic>();
-
-			rigidBody.material = getMaterial(rigidBody.materialInfo);
-
-			const physx::PxTransform pxTransform(physx::PxVec3{ transform.position.x, transform.position.y, transform.position.z }, physx::PxQuat{ transform.rotation.x, transform.rotation.y, transform.rotation.z, transform.rotation.w });
-			rigidBody.pxRigidBody = physx::PxCreateDynamic(*physics, pxTransform, *getShape(rigidBody.mesh, rigidBody.material), rigidBody.density);
-			//rigidBody.pxRigidBody->setRigidBodyFlag(physx::PxRigidBodyFlag::eKINEMATIC)
-			mEntityIDs.push_back(entity.ID());
+			rigidBody.pxRigidBody = physx::PxCreateDynamic(*physics, pxTransform, geometry, *getMaterial(rigidBody.material), rigidBody.density);
+			assert(rigidBody.pxRigidBody, "[ERROR PHYSX] Rigid body creation failed");
+			if (rigidBody.type == KINEMATIC)
+				((physx::PxRigidDynamic*)rigidBody.pxRigidBody)->setRigidBodyFlag(physx::PxRigidBodyFlag::eKINEMATIC, true);
 		}
+		scene->addActor(*rigidBody.pxRigidBody);
+		mEntityIDs.push_back(entity.ID());
 	}
 }
 
@@ -163,16 +128,29 @@ void PhysicsSystem::componentRemoved(const Entity& entity)
 	std::vector<EntityID>::iterator IDIterator = std::find(mEntityIDs.begin(), mEntityIDs.end(), entity.ID());
 	if (IDIterator != mEntityIDs.end())
 	{
-		Composition entityComposition = entity.composition();
-		if (entityComposition & mRigidStaticManager.bit)
-			entity.getComponent<RigidBodyStatic>().pxRigidBody->release();
-		else if (entityComposition & mRigidDynamicManager.bit)
-			entity.getComponent<RigidBodyDynamic>().pxRigidBody->release();
+		RigidBody& rigidBody = entity.getComponent<RigidBody>();
+		rigidBody.pxMesh->release();
+		rigidBody.pxRigidBody->release();
 		mEntityIDs.erase(IDIterator);
 	}
 }
 
 void PhysicsSystem::update(const float& delta)
 {
+	accumulator += delta;
+	if (accumulator >= SIMULATION_STEP)
+	{
+		scene->simulate(SIMULATION_STEP);
+		scene->fetchResults(true);
 
+		for (const EntityID& ID : mEntityIDs)
+		{
+			Transform& transform = mTransformManager.getComponent(ID);
+			RigidBody& rigidBody = mRigidBodyManager.getComponent(ID);
+
+			const physx::PxTransform pxTransform = rigidBody.pxRigidBody->getGlobalPose();
+			transform.position = glm::vec3(pxTransform.p.x, pxTransform.p.y, pxTransform.p.z);
+			transform.rotation = glm::quat(pxTransform.q.w, pxTransform.q.x, pxTransform.q.y, pxTransform.q.z);
+		}
+	}
 }

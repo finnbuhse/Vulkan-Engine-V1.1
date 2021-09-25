@@ -62,7 +62,7 @@ void CameraControllerSystem::update(const float& deltaTime)
 		if (dDown)
 			transform.translate(transform.worldDirection(glm::vec3(1.0f, 0.0f, 0.0f)) * cameraController.movementSpeed * deltaTime);
 
-		transform.rotate(cursorDelta.y * cameraController.mouseSensitivity, transform.worldDirection(glm::vec3(1.0f, 0.0f, 0.0f)));
+		transform.rotate(-cursorDelta.y * cameraController.mouseSensitivity, transform.worldDirection(glm::vec3(1.0f, 0.0f, 0.0f)));
 		transform.rotate(-cursorDelta.x * cameraController.mouseSensitivity, glm::vec3(0.0f, 1.0f, 0.0f));
 	}
 }

@@ -2,6 +2,11 @@
 #extension GL_ARB_separate_shader_objects : enable
 #extension GL_ARB_shading_language_420pack : enable
 
+const mat4 clipMatrix = mat4(1.0f,  0.0f, 0.0f, 0.0f,
+			0.0f, -1.0f, 0.0f, 0.0f,
+                        0.0f,  0.0f, 0.5f, 0.0f,
+                        0.0f,  0.0f, 0.5f, 1.0f);
+
 layout (location = 0) in vec3 aPosition;
 layout (location = 1) in vec3 aNormal;
 layout (location = 2) in vec3 aTangent;
@@ -34,5 +39,5 @@ void main()
 
 	gl_Position = model.matrix * vec4(aPosition, 1.0);
 	worldFragment = gl_Position.xyz;
-	gl_Position = camera.projectionMatrix * camera.viewMatrix * gl_Position;
+	gl_Position = clipMatrix * camera.projectionMatrix * camera.viewMatrix * gl_Position;
 }

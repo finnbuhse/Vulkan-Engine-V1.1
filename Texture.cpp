@@ -373,7 +373,7 @@ Cubemap::Cubemap(CubemapInfo cubemapInfo)
 	const FormatInfo formatInfo = getFormatInfo(cubemapInfo.format);
 
     #pragma region Create cubemap resources
-	stbi_set_flip_vertically_on_load(true);
+	stbi_set_flip_vertically_on_load(false);
 
 	// Load images
 	void* textureData[6];

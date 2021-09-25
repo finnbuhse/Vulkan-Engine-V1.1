@@ -5,6 +5,9 @@
 #define PI 3.1415926535
 #define PI_RECIPRICOL 0.31830988618
 
+#define GAMMA 2.2
+#define EXPOSURE 1.0
+
 // PRECOMPILED CONSTANTS
 #define MAX_PREFILTER_LOD 11
 
@@ -12,9 +15,6 @@
 #define MAX_POINT_LIGHTS 500
 #define MAX_SPOT_LIGHTS 500
 // ---------------------
-
-#define GAMMA 2.2
-#define EXPOSURE 1.0
 
 layout (location = 0) in vec3 worldFragment;
 layout (location = 1) in vec2 textureCoordinate;
@@ -106,7 +106,7 @@ void main()
 
     vec3 fragmentToView = normalize(camera.position - worldFragment);
 
-    colour = vec3(0.0);//BRDF(albedo, normal, roughness, metalness, reflectivity, directionalLight.colour, -directionalLight.direction, fragmentToView);
+    colour = BRDF(albedo, normal, roughness, metalness, reflectivity, directionalLight.colour, -directionalLight.direction, fragmentToView);
 
     vec3 diffuse = albedo * texture(irradianceMap, normal).rgb;
 
@@ -115,12 +115,11 @@ void main()
     
     float NdotV = max(dot(normal, fragmentToView), 0.0);
 
-    vec3 fresnel = /*F(NdotV, reflectivity)*/FRoughness(NdotV, reflectivity, roughness);
+    vec3 fresnel = FRoughness(NdotV, reflectivity, roughness); //F(NdotV, reflectivity)
     vec3 kD = (vec3(1.0) - fresnel) * (1.0 - metalness);
 
-    //vec2 brdf = texture(brdfLUT, vec2(NdotV, roughness)).rg;
-
-    vec3 specular = prefilteredColour * fresnel;/*brdf.x + brdf.y*/; // Makes strange dot?
+    //vec2 brdf = texture(brdfLUT, vec2(NdotV, roughness)).rg;  Makes strange dot?
+    vec3 specular = prefilteredColour * fresnel;
 
     // ambient
     colour += (kD * diffuse + specular) * ambientOcclusion;

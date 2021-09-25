@@ -1218,7 +1218,7 @@ RenderSystem::RenderSystem()
 	rasterizationState.rasterizerDiscardEnable = VK_FALSE;
 	rasterizationState.polygonMode = VK_POLYGON_MODE_FILL;
 	rasterizationState.cullMode = VK_CULL_MODE_BACK_BIT;
-	rasterizationState.frontFace = VK_FRONT_FACE_CLOCKWISE;
+	rasterizationState.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
 	rasterizationState.lineWidth = 1.0f;
 
 	VkPipelineMultisampleStateCreateInfo multisampleState = {};
@@ -1332,6 +1332,8 @@ RenderSystem::RenderSystem()
 	vertexInputState.pVertexBindingDescriptions = &vertexBindingDescription;
 	vertexInputState.vertexAttributeDescriptionCount = 1;
 	vertexInputState.pVertexAttributeDescriptions = &vertexAttributeDescription;
+
+	rasterizationState.cullMode = VK_CULL_MODE_NONE;
 
 	pipelineLayoutCreateInfo.setLayoutCount = 1;
 	pipelineLayoutCreateInfo.pSetLayouts = &mSkyboxDescriptorSetLayout;
@@ -2231,8 +2233,8 @@ void RenderSystem::setSkybox(const Cubemap* cubemap)
 {
 	#pragma region Update descriptor set
 	VkDescriptorImageInfo skyboxInfo = {};
-	skyboxInfo.sampler = cubemap->mSampler;
-	skyboxInfo.imageView = cubemap->mImageView;
+	skyboxInfo.sampler = cubemap->mSampler;/*mIrradianceSampler;*/
+	skyboxInfo.imageView = cubemap->mImageView;/*mIrradianceImageView;*/
 	skyboxInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
 	VkWriteDescriptorSet descriptorSetWrites[2] = {};
@@ -2446,15 +2448,29 @@ const Entity processNode(const aiNode* aiNode, const aiScene* aiScene, std::vect
 	return nodeEntity;
 }
 
+#include <iostream>
+
 std::vector<Entity> loadModel(const char* directory)
 {
 	std::vector<Entity> model;
 
 	Assimp::Importer importer;
+
 	const aiScene* scene = importer.ReadFile(directory, aiProcess_Triangulate | aiProcess_FlipUVs | aiProcess_CalcTangentSpace);
 	assert(("[ERROR] Assimp failed to load model", scene && scene->mRootNode && !(scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE)));
+	
 	std::string directoryString(directory);
-	model.push_back(processNode(scene->mRootNode, scene, model, directoryString.substr(0, directoryString.find_last_of("/"))));
+	Entity root = processNode(scene->mRootNode, scene, model, directoryString.substr(0, directoryString.find_last_of("/")));
+	model.push_back(root);
+	if (directoryString.find("fbx") != std::string::npos)
+	{
+		root.getComponent<Transform>().scale *= 0.01f;
+		const Entity newRoot;
+		Transform& newRootTransform = newRoot.addComponent<Transform>(TransformCreateInfo{});
+		newRootTransform.addChild(root);
+		model.push_back(newRoot);
+	}
+	
 	return model;
 }
 

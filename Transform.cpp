@@ -1,4 +1,24 @@
 #include "Transform.h"
+#include <iostream>
+
+void printMat4(const glm::mat4& matrix)
+{
+	for (unsigned int i = 0; i < 4; i++)
+	{
+		for (unsigned int j = 0; j < 4; j++)
+		{
+			std::cout << matrix[j][i];
+			if (i < 3 || j < 3)
+				std::cout << ", ";
+		}
+		std::cout << "\n";
+	}
+}
+
+void printVec3(const glm::vec3& vec3)
+{
+	std::cout << vec3.x << ", " << vec3.y << ", " << vec3.z << std::endl;
+}
 
 glm::vec3 Transform::direction(const glm::vec3& direction) const
 {
