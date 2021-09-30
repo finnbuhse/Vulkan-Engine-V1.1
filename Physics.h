@@ -38,8 +38,8 @@ struct RigidBody
 	unsigned char maxVertices;
 	physx::PxConvexMesh* pxMesh;
 	PxMaterialInfo material;
-	physx::PxRigidActor* pxRigidBody; // Either static or dynamic rigid body
 	float density; // Unused for static rigid bodies
+	physx::PxRigidActor* pxRigidBody; // Either static or dynamic rigid body
 };
 
 struct StaticRigidBodyCreateInfo
@@ -84,13 +84,21 @@ struct DynamicRigidBodyCreateInfo
 
 struct CharacterController
 {
+	float radius;
+	float height;
+	
+	float maxStepHeight;
+	float maxSlope;
+	float inisibleWallHeight;
+	float maxJumpHeight;
+	
 	float contactOffset;
 	float cacheVolumeFactor;
-
-	float maxStepHeight;
-	float slopeLimit;
-	float invisibleWallHeight;
-	float maxJumpHeight;
+	
+	bool slide;
+	
+	PxMaterialInfo material;
+	physx::PxController* pxController;
 };
 
 class PhysicsSystem
@@ -100,8 +108,11 @@ private:
 
 	std::vector<EntityID> mStaticEntityIDs;
 	std::vector<EntityID> mDynamicEntityIDs;
+	std::vector<EntityID> mControllerEntityIDs;
+	
 	Composition mRigidBodyComposition;
 	Composition mCharacterControllerComposition;
+	
 	ComponentManager<Transform>& mTransformManager = ComponentManager<Transform>::instance();
 	ComponentManager<Mesh>& mMeshManager = ComponentManager<Mesh>::instance();
 	ComponentManager<RigidBody>& mRigidBodyManager = ComponentManager<RigidBody>::instance();
