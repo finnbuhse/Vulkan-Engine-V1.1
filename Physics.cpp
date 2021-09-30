@@ -195,6 +195,14 @@ void PhysicsSystem::controllerComponentRemoved(const Entity& entity)
 	}
 }
 
+void PhysicsSystem::controllerTransformChanged(const Transform& transform)
+{
+	CharacterController& characterController = mCharacterControllerManager.getComponent(transform.entityID);
+	
+	glm::vec3 displacement = transform.position - transform.lastPosition;
+	characterController.pxController->move({displacement.x, displacement.y, displacement.z}, 0.1f, 
+}
+
 void PhysicsSystem::update(const float& delta)
 {
 	accumulator += delta;
