@@ -122,24 +122,21 @@ void TransformSystem::updateTransform(const EntityID& entityID) const
 			transform.matrix = parentTransform.matrix * glm::translate(glm::mat4(1.0f), transform.position) * glm::mat4_cast(transform.rotation) * glm::scale(glm::mat4(1.0f), transform.scale);
 
 			if (transform.positionChanged)
-			{
-				transform.lastPosition = transform.position; // Update last position
 				transform.worldPosition = parentTransform.worldPosition + transform.position; // Update world position
-			}
+
 			if (transform.rotationChanged)
-			{
-				transform.lastRotation = transform.rotation; // Update last rotation
 				transform.worldRotation = parentTransform.worldRotation * transform.rotation; // Update world rotation
-			}
+			
 			if (transform.scaleChanged)
-			{
-				transform.lastScale = transform.scale; // Update last scale
 				transform.worldScale = parentTransform.worldScale * transform.scale; // Update world scale
-			}
 
 			// Invoke changed callbacks
 			for (unsigned int i = 0; i < transform.changedCallbacks.length; i++)
 				transform.changedCallbacks[i](transform);
+			
+			transform.lastPosition = transform.position;
+			transform.lastRotation = transform.rotation;
+			transform.lastScale = transform.scale;
 		}
 	}
 	else
@@ -147,16 +144,17 @@ void TransformSystem::updateTransform(const EntityID& entityID) const
 		if (transform.positionChanged || transform.rotationChanged || transform.scaleChanged)
 		{
 			transform.matrix = glm::translate(glm::mat4(1.0f), transform.position) * glm::mat4_cast(transform.rotation) * glm::scale(glm::mat4(1.0f), transform.scale);
-
-			transform.lastPosition = transform.position;
+			
 			transform.worldPosition = transform.position;
-			transform.lastRotation = transform.rotation;
 			transform.worldRotation = transform.rotation;
-			transform.lastScale = transform.scale;
 			transform.worldScale = transform.scale;
 
 			for (unsigned int i = 0; i < transform.changedCallbacks.length; i++)
 				transform.changedCallbacks[i](transform);
+			
+			transform.lastPosition = transform.position;
+			transform.lastRotation = transform.rotation;
+			transform.lastScale = transform.scale;
 		}
 	}
 
