@@ -96,6 +96,8 @@ struct CharacterController
 	float cacheVolumeFactor;
 	
 	bool slide;
+
+        unsigned int transformChangedCallbackIndex;
 	
 	PxMaterialInfo material;
 	physx::PxController* pxController;
@@ -146,6 +148,8 @@ public:
 
 	void controllerComponentAdded(const Entity& entity);
 	void controllerComponentRemoved(const Entity& entity);
+
+        void controllerTransformChanged(const Transform& transform);
 
 	void update(const float& delta);
 };
