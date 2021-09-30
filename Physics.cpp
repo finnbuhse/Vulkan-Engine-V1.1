@@ -5,12 +5,16 @@
 
 PhysicsSystem::PhysicsSystem()
 {
-    mTransformManager.subscribeAddEvent(std::bind(&PhysicsSystem::componentAdded, this, std::placeholders::_1));
-    mTransformManager.subscribeRemoveEvent(std::bind(&PhysicsSystem::componentRemoved, this, std::placeholders::_1));
-	mMeshManager.subscribeAddEvent(std::bind(&PhysicsSystem::componentAdded, this, std::placeholders::_1));
-	mMeshManager.subscribeRemoveEvent(std::bind(&PhysicsSystem::componentRemoved, this, std::placeholders::_1));
-    mRigidBodyManager.subscribeAddEvent(std::bind(&PhysicsSystem::componentAdded, this, std::placeholders::_1));
-    mRigidBodyManager.subscribeRemoveEvent(std::bind(&PhysicsSystem::componentRemoved, this, std::placeholders::_1));
+	mTransformManager.subscribeAddEvent(std::bind(&PhysicsSystem::componentAdded, this, std::placeholders::_1));
+	mTransformManager.subscribeRemoveEvent(std::bind(&PhysicsSystem::componentRemoved, this, std::placeholders::_1));
+	mTransformManager.subscribeAddEvent(std::bind(&PhysicsSystem::controllerComponentAdded, this, std::placeholders::_1));
+	mTransformManager.subscribeRemoveEvent(std::bind(&PhysicsSystem::controllerComponentRemoved, this, std::placeholders::_1));
+	
+	mRigidBodyManager.subscribeAddEvent(std::bind(&PhysicsSystem::componentAdded, this, std::placeholders::_1));
+	mRigidBodyManager.subscribeRemoveEvent(std::bind(&PhysicsSystem::componentRemoved, this, std::placeholders::_1));
+	
+	mCharacterControllerManager.subscribeAddEvent(std::bind(&PhysicsSystem::controllerComponentAdded, this, std::placeholders::_1));
+	mCharacterControllerManager.subscribeRemoveEvent(std::bind(&PhysicsSystem::controllerComponentAdded, this, std::placeholders::_1));
 
 	mRigidBodyComposition = mTransformManager.bit | mRigidBodyManager.bit;
 	mCharacterControllerComposition = mTransformManager.bit | mCharacterControllerManager.bit;
@@ -65,8 +69,8 @@ PhysicsSystem::~PhysicsSystem()
 
 PhysicsSystem& PhysicsSystem::instance()
 {
-    static PhysicsSystem instance;
-    return instance;
+	static PhysicsSystem instance;
+	return instance;
 }
 
 physx::PxMaterial* PhysicsSystem::getMaterial(const PxMaterialInfo& materialInfo)
@@ -154,24 +158,40 @@ void PhysicsSystem::controllerComponentAdded(const Entity& entity)
 	if ((entity.composition() & mCharacterControllerComposition) == mCharacterControllerComposition)
 	{
 		Transform& transform = entity.getComponent<Transform>();
+		CharacterController& characterController = entity.getComponent<CharacterController>();
 
 		physx::PxCapsuleControllerDesc controllerDesc;
 		controllerDesc.position = physx::PxExtendedVec3{ transform.position.x, transform.position.y, transform.position.z };
 		controllerDesc.upDirection = { 0, 1, 0 };
-		controllerDesc.slopeLimit = 0.71f;
-		controllerDesc.invisibleWallHeight = 0.0f;
-		controllerDesc.maxJumpHeight = 3.0f;
-		controllerDesc.contactOffset = 0.1f;
-		controllerDesc.stepOffset = 0.5f;
-		controllerDesc.volumeGrowth = 1.5f;
+		controllerDesc.slopeLimit = characterController.maxSlope;
+		controllerDesc.invisibleWallHeight = characterController.invisibleWallHeight;
+		controllerDesc.maxJumpHeight = characterController.maxJumpHeight;
+		controllerDesc.contactOffset = characterController.contactOffset;
+		controllerDesc.stepOffset = characterController.maxStepHeight;
+		controllerDesc.volumeGrowth = characterController.cacheVolumeFactor;
 		controllerDesc.reportCallback = nullptr;
 		controllerDesc.behaviorCallback = nullptr;
-		controllerDesc.nonWalkableMode = physx::PxControllerNonWalkableMode::ePREVENT_CLIMBING_AND_FORCE_SLIDING;
-		controllerDesc.material = getMaterial();
+		controllerDesc.nonWalkableMode = characterController.slide ? physx::PxControllerNonWalkableMode::ePREVENT_CLIMBING_AND_FORCE_SLIDING : physx::PxControllerNonWalkableMode::ePREVENT_CLIMBING;
+		controllerDesc.material = getMaterial(characterController.material);
 
-		controllerDesc.radius = 0.5f;
-		controllerDesc.height = 4.0f;
+		controllerDesc.radius = characterController.radius;
+		controllerDesc.height = characterController.height;
 		controllerDesc.climbingMode = physx::PxCapsuleClimbingMode::eEASY;
+		
+		characterController.pxController = controllerManager->createController(controllerDesc);
+		
+		mControllerEntityIDs.push_back(entity.ID());
+	}
+}
+
+void PhysicsSystem::controllerComponentRemoved(const Entity& entity)
+{
+	std::vector<EntityID>::iterator controllerIDIterator = std::find(mControllerEntityIDs.begin(), mControllerEntityIDs.end(), entity.ID());
+	if(controllerIDIterator != mControllerEntityIDs.end())
+	{
+		CharacterController& characterController = entity.getComponent<CharacterController>();
+		characterController.pxController->release();
+		mControllerEntityIDs.erase(controllerIDIterator);
 	}
 }
 
