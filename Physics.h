@@ -82,16 +82,30 @@ struct DynamicRigidBodyCreateInfo
 	}
 };
 
+struct CharacterController
+{
+	float contactOffset;
+	float cacheVolumeFactor;
+
+	float maxStepHeight;
+	float slopeLimit;
+	float invisibleWallHeight;
+	float maxJumpHeight;
+};
+
 class PhysicsSystem
 {
 private:
 	std::unordered_map<PxMaterialInfo, physx::PxMaterial*, PxMaterialInfoHasher> mMaterials;
 
-	std::vector<EntityID> mEntityIDs;
-	Composition mComposition;
+	std::vector<EntityID> mStaticEntityIDs;
+	std::vector<EntityID> mDynamicEntityIDs;
+	Composition mRigidBodyComposition;
+	Composition mCharacterControllerComposition;
 	ComponentManager<Transform>& mTransformManager = ComponentManager<Transform>::instance();
 	ComponentManager<Mesh>& mMeshManager = ComponentManager<Mesh>::instance();
 	ComponentManager<RigidBody>& mRigidBodyManager = ComponentManager<RigidBody>::instance();
+	ComponentManager<CharacterController>& mCharacterControllerManager = ComponentManager<CharacterController>::instance();
 	
 	physx::PxDefaultAllocator allocatorCallback;
 	physx::PxDefaultErrorCallback errorCallback;
@@ -102,6 +116,7 @@ private:
 	physx::PxCooking* cooking;
 	physx::PxCpuDispatcher* cpuDispatcher;
 	physx::PxPvdSceneClient* pvdSceneClient;
+	physx::PxControllerManager* controllerManager;
 
 	float accumulator = 0;
 
@@ -117,6 +132,9 @@ public:
 
 	void componentAdded(const Entity& entity);
 	void componentRemoved(const Entity& entity);
+
+	void controllerComponentAdded(const Entity& entity);
+	void controllerComponentRemoved(const Entity& entity);
 
 	void update(const float& delta);
 };

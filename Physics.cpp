@@ -12,7 +12,8 @@ PhysicsSystem::PhysicsSystem()
     mRigidBodyManager.subscribeAddEvent(std::bind(&PhysicsSystem::componentAdded, this, std::placeholders::_1));
     mRigidBodyManager.subscribeRemoveEvent(std::bind(&PhysicsSystem::componentRemoved, this, std::placeholders::_1));
 
-	mComposition = mTransformManager.bit | mRigidBodyManager.bit;
+	mRigidBodyComposition = mTransformManager.bit | mRigidBodyManager.bit;
+	mCharacterControllerComposition = mTransformManager.bit | mCharacterControllerManager.bit;
 
 	// PhysX Initialization
 	physx::PxDefaultAllocator();
@@ -46,16 +47,19 @@ PhysicsSystem::PhysicsSystem()
 	pvdSceneClient->setScenePvdFlag(physx::PxPvdSceneFlag::eTRANSMIT_CONSTRAINTS, true);
 	pvdSceneClient->setScenePvdFlag(physx::PxPvdSceneFlag::eTRANSMIT_CONTACTS, true);
 	pvdSceneClient->setScenePvdFlag(physx::PxPvdSceneFlag::eTRANSMIT_SCENEQUERIES, true);
+
+	controllerManager = PxCreateControllerManager(*scene);
 }
 
 PhysicsSystem::~PhysicsSystem()
 {
 	for (const std::pair<PxMaterialInfo, physx::PxMaterial*>& material : mMaterials)
 		material.second->release();
+	controllerManager->release();
+	pvd->release();
 	cooking->release();
 	scene->release();
 	physics->release();
-	pvd->release();
 	foundation->release();
 }
 
@@ -77,7 +81,7 @@ physx::PxMaterial* PhysicsSystem::getMaterial(const PxMaterialInfo& materialInfo
 
 void PhysicsSystem::componentAdded(const Entity& entity)
 { 
-	if ((entity.composition() & mComposition) == mComposition)
+	if ((entity.composition() & mRigidBodyComposition) == mRigidBodyComposition)
 	{
 		Transform& transform = entity.getComponent<Transform>();
 		const physx::PxTransform pxTransform(physx::PxVec3{ transform.position.x, transform.position.y, transform.position.z }, physx::PxQuat{ transform.rotation.x, transform.rotation.y, transform.rotation.z, transform.rotation.w });
@@ -110,6 +114,7 @@ void PhysicsSystem::componentAdded(const Entity& entity)
 		{
 			rigidBody.pxRigidBody = physx::PxCreateStatic(*physics, pxTransform, geometry, *getMaterial(rigidBody.material));
 			assert(rigidBody.pxRigidBody, "[ERROR PHYSX] Rigid body creation failed");
+			mStaticEntityIDs.push_back(entity.ID());
 		}
 		else
 		{
@@ -117,21 +122,56 @@ void PhysicsSystem::componentAdded(const Entity& entity)
 			assert(rigidBody.pxRigidBody, "[ERROR PHYSX] Rigid body creation failed");
 			if (rigidBody.type == KINEMATIC)
 				((physx::PxRigidDynamic*)rigidBody.pxRigidBody)->setRigidBodyFlag(physx::PxRigidBodyFlag::eKINEMATIC, true);
+			mDynamicEntityIDs.push_back(entity.ID());
 		}
 		scene->addActor(*rigidBody.pxRigidBody);
-		mEntityIDs.push_back(entity.ID());
 	}
 }
 
 void PhysicsSystem::componentRemoved(const Entity& entity)
 {
-	std::vector<EntityID>::iterator IDIterator = std::find(mEntityIDs.begin(), mEntityIDs.end(), entity.ID());
-	if (IDIterator != mEntityIDs.end())
+	std::vector<EntityID>::iterator staticIDIterator = std::find(mStaticEntityIDs.begin(), mStaticEntityIDs.end(), entity.ID());
+	std::vector<EntityID>::iterator dynamicIDIterator = std::find(mDynamicEntityIDs.begin(), mDynamicEntityIDs.end(), entity.ID());
+	
+	if (dynamicIDIterator != mDynamicEntityIDs.end())
 	{
 		RigidBody& rigidBody = entity.getComponent<RigidBody>();
 		rigidBody.pxMesh->release();
 		rigidBody.pxRigidBody->release();
-		mEntityIDs.erase(IDIterator);
+		mDynamicEntityIDs.erase(dynamicIDIterator);
+	}
+	else if (staticIDIterator != mStaticEntityIDs.end())
+	{
+		RigidBody& rigidBody = entity.getComponent<RigidBody>();
+		rigidBody.pxMesh->release();
+		rigidBody.pxRigidBody->release();
+		mStaticEntityIDs.erase(dynamicIDIterator);
+	}
+}
+
+void PhysicsSystem::controllerComponentAdded(const Entity& entity)
+{
+	if ((entity.composition() & mCharacterControllerComposition) == mCharacterControllerComposition)
+	{
+		Transform& transform = entity.getComponent<Transform>();
+
+		physx::PxCapsuleControllerDesc controllerDesc;
+		controllerDesc.position = physx::PxExtendedVec3{ transform.position.x, transform.position.y, transform.position.z };
+		controllerDesc.upDirection = { 0, 1, 0 };
+		controllerDesc.slopeLimit = 0.71f;
+		controllerDesc.invisibleWallHeight = 0.0f;
+		controllerDesc.maxJumpHeight = 3.0f;
+		controllerDesc.contactOffset = 0.1f;
+		controllerDesc.stepOffset = 0.5f;
+		controllerDesc.volumeGrowth = 1.5f;
+		controllerDesc.reportCallback = nullptr;
+		controllerDesc.behaviorCallback = nullptr;
+		controllerDesc.nonWalkableMode = physx::PxControllerNonWalkableMode::ePREVENT_CLIMBING_AND_FORCE_SLIDING;
+		controllerDesc.material = getMaterial();
+
+		controllerDesc.radius = 0.5f;
+		controllerDesc.height = 4.0f;
+		controllerDesc.climbingMode = physx::PxCapsuleClimbingMode::eEASY;
 	}
 }
 
@@ -143,7 +183,7 @@ void PhysicsSystem::update(const float& delta)
 		scene->simulate(SIMULATION_STEP);
 		scene->fetchResults(true);
 
-		for (const EntityID& ID : mEntityIDs)
+		for (const EntityID& ID : mDynamicEntityIDs)
 		{
 			Transform& transform = mTransformManager.getComponent(ID);
 			RigidBody& rigidBody = mRigidBodyManager.getComponent(ID);
