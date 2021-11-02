@@ -92,6 +92,7 @@ FormatInfo getFormatInfo(const VkFormat& format)
 }
 
 Texture::Texture(const TextureInfo& textureInfo)
+	: mInfo(textureInfo)
 {
 	RenderSystem& renderSystem = RenderSystem::instance();
 	TextureManager& textureManager = TextureManager::instance();

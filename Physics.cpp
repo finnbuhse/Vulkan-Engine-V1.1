@@ -5,23 +5,45 @@
 
 PhysicsSystem::PhysicsSystem()
 {
+	mLastCursorPosition = mWindowManager.cursorPosition();
+
 	mTransformManager.subscribeAddEvent(std::bind(&PhysicsSystem::componentAdded, this, std::placeholders::_1));
 	mTransformManager.subscribeRemoveEvent(std::bind(&PhysicsSystem::componentRemoved, this, std::placeholders::_1));
 	mTransformManager.subscribeAddEvent(std::bind(&PhysicsSystem::controllerComponentAdded, this, std::placeholders::_1));
 	mTransformManager.subscribeRemoveEvent(std::bind(&PhysicsSystem::controllerComponentRemoved, this, std::placeholders::_1));
-	
+
 	mRigidBodyManager.subscribeAddEvent(std::bind(&PhysicsSystem::componentAdded, this, std::placeholders::_1));
 	mRigidBodyManager.subscribeRemoveEvent(std::bind(&PhysicsSystem::componentRemoved, this, std::placeholders::_1));
-	
+
 	mCharacterControllerManager.subscribeAddEvent(std::bind(&PhysicsSystem::controllerComponentAdded, this, std::placeholders::_1));
 	mCharacterControllerManager.subscribeRemoveEvent(std::bind(&PhysicsSystem::controllerComponentAdded, this, std::placeholders::_1));
 
 	mRigidBodyComposition = mTransformManager.bit | mRigidBodyManager.bit;
 	mCharacterControllerComposition = mTransformManager.bit | mCharacterControllerManager.bit;
 
-	// PhysX Initialization
-	physx::PxDefaultAllocator();
+	forwardSlerp.reverse();
+	forwardSlerp.start();
 
+	backSlerp.reverse();
+	backSlerp.start();
+
+	leftSlerp.reverse();
+	leftSlerp.start();
+
+	rightSlerp.reverse();
+	rightSlerp.start();
+
+	mWindowManager.subscribeKeyPressEvent(W, std::bind(&PhysicsSystem::forwardKey, this));
+	mWindowManager.subscribeKeyPressEvent(S, std::bind(&PhysicsSystem::backKey, this));
+	mWindowManager.subscribeKeyPressEvent(A, std::bind(&PhysicsSystem::leftKey, this));
+	mWindowManager.subscribeKeyPressEvent(D, std::bind(&PhysicsSystem::rightKey, this));
+
+	mWindowManager.subscribeKeyReleaseEvent(W, std::bind(&PhysicsSystem::forwardKey, this));
+	mWindowManager.subscribeKeyReleaseEvent(S, std::bind(&PhysicsSystem::backKey, this));
+	mWindowManager.subscribeKeyReleaseEvent(A, std::bind(&PhysicsSystem::leftKey, this));
+	mWindowManager.subscribeKeyReleaseEvent(D, std::bind(&PhysicsSystem::rightKey, this));
+
+	// PhysX Initialization
 	foundation = PxCreateFoundation(PX_PHYSICS_VERSION, allocatorCallback, errorCallback);
 	assert(foundation, "[ERROR] PhysX foundation creation failed");
 
@@ -39,8 +61,10 @@ PhysicsSystem::PhysicsSystem()
 	cooking = PxCreateCooking(PX_PHYSICS_VERSION, *foundation, physx::PxCookingParams(scale));
 	assert(cooking, "[ERROR] PhysX cooking creation failed");
 
+	assert(PxInitExtensions(*physics, pvd), "[ERROR] Physx extension initialization failed");
+
 	// Create scene
-	physx::PxSceneDesc sceneDesc(physics->getTolerancesScale());
+	physx::PxSceneDesc sceneDesc(scale);
 	sceneDesc.gravity = physx::PxVec3(0.0f, -9.81f, 0.0f);
 	sceneDesc.cpuDispatcher = cpuDispatcher = physx::PxDefaultCpuDispatcherCreate(PX_THREADS);
 	sceneDesc.filterShader = physx::PxDefaultSimulationFilterShader;
@@ -57,13 +81,14 @@ PhysicsSystem::PhysicsSystem()
 
 PhysicsSystem::~PhysicsSystem()
 {
+	PxCloseExtensions();
 	for (const std::pair<PxMaterialInfo, physx::PxMaterial*>& material : mMaterials)
 		material.second->release();
 	controllerManager->release();
-	pvd->release();
 	cooking->release();
 	scene->release();
 	physics->release();
+	pvd->release();
 	foundation->release();
 }
 
@@ -84,14 +109,14 @@ physx::PxMaterial* PhysicsSystem::getMaterial(const PxMaterialInfo& materialInfo
 }
 
 void PhysicsSystem::componentAdded(const Entity& entity)
-{ 
+{
 	if ((entity.composition() & mRigidBodyComposition) == mRigidBodyComposition)
 	{
 		Transform& transform = entity.getComponent<Transform>();
 		const physx::PxTransform pxTransform(physx::PxVec3{ transform.position.x, transform.position.y, transform.position.z }, physx::PxQuat{ transform.rotation.x, transform.rotation.y, transform.rotation.z, transform.rotation.w });
 
 		RigidBody& rigidBody = entity.getComponent<RigidBody>();
-		
+
 		std::vector<glm::vec3> positions = rigidBody.mesh->positions();
 
 		physx::PxConvexMeshDesc meshDesc;
@@ -111,7 +136,7 @@ void PhysicsSystem::componentAdded(const Entity& entity)
 
 		physx::PxDefaultMemoryInputData readBuffer(writeBuffer.getData(), writeBuffer.getSize());
 		rigidBody.pxMesh = physics->createConvexMesh(readBuffer);
-		
+
 		physx::PxConvexMeshGeometry geometry(rigidBody.pxMesh, physx::PxMeshScale({ transform.scale.x, transform.scale.y, transform.scale.z }));
 
 		if (rigidBody.type == STATIC)
@@ -136,20 +161,20 @@ void PhysicsSystem::componentRemoved(const Entity& entity)
 {
 	std::vector<EntityID>::iterator staticIDIterator = std::find(mStaticEntityIDs.begin(), mStaticEntityIDs.end(), entity.ID());
 	std::vector<EntityID>::iterator dynamicIDIterator = std::find(mDynamicEntityIDs.begin(), mDynamicEntityIDs.end(), entity.ID());
-	
-	if (dynamicIDIterator != mDynamicEntityIDs.end())
+
+	if (staticIDIterator != mStaticEntityIDs.end())
+	{
+		RigidBody& rigidBody = entity.getComponent<RigidBody>();
+		rigidBody.pxMesh->release();
+		rigidBody.pxRigidBody->release();
+		mStaticEntityIDs.erase(staticIDIterator);
+	}
+	else if (dynamicIDIterator != mDynamicEntityIDs.end())
 	{
 		RigidBody& rigidBody = entity.getComponent<RigidBody>();
 		rigidBody.pxMesh->release();
 		rigidBody.pxRigidBody->release();
 		mDynamicEntityIDs.erase(dynamicIDIterator);
-	}
-	else if (staticIDIterator != mStaticEntityIDs.end())
-	{
-		RigidBody& rigidBody = entity.getComponent<RigidBody>();
-		rigidBody.pxMesh->release();
-		rigidBody.pxRigidBody->release();
-		mStaticEntityIDs.erase(dynamicIDIterator);
 	}
 }
 
@@ -177,9 +202,9 @@ void PhysicsSystem::controllerComponentAdded(const Entity& entity)
 		controllerDesc.radius = characterController.radius;
 		controllerDesc.height = characterController.height;
 		controllerDesc.climbingMode = physx::PxCapsuleClimbingMode::eEASY;
-		
+
 		characterController.pxController = controllerManager->createController(controllerDesc);
-		
+
 		mControllerEntityIDs.push_back(entity.ID());
 	}
 }
@@ -187,7 +212,7 @@ void PhysicsSystem::controllerComponentAdded(const Entity& entity)
 void PhysicsSystem::controllerComponentRemoved(const Entity& entity)
 {
 	std::vector<EntityID>::iterator controllerIDIterator = std::find(mControllerEntityIDs.begin(), mControllerEntityIDs.end(), entity.ID());
-	if(controllerIDIterator != mControllerEntityIDs.end())
+	if (controllerIDIterator != mControllerEntityIDs.end())
 	{
 		CharacterController& characterController = entity.getComponent<CharacterController>();
 		characterController.pxController->release();
@@ -195,17 +220,9 @@ void PhysicsSystem::controllerComponentRemoved(const Entity& entity)
 	}
 }
 
-void PhysicsSystem::controllerTransformChanged(const Transform& transform)
+void PhysicsSystem::update(const float& deltaTime)
 {
-	CharacterController& characterController = mCharacterControllerManager.getComponent(transform.entityID);
-	
-	glm::vec3 displacement = transform.position - transform.lastPosition;
-	characterController.pxController->move({displacement.x, displacement.y, displacement.z}, 0.1f, 
-}
-
-void PhysicsSystem::update(const float& delta)
-{
-	accumulator += delta;
+	accumulator += deltaTime;
 	if (accumulator >= SIMULATION_STEP)
 	{
 		scene->simulate(SIMULATION_STEP);
@@ -220,5 +237,74 @@ void PhysicsSystem::update(const float& delta)
 			transform.position = glm::vec3(pxTransform.p.x, pxTransform.p.y, pxTransform.p.z);
 			transform.rotation = glm::quat(pxTransform.q.w, pxTransform.q.x, pxTransform.q.y, pxTransform.q.z);
 		}
+
+		accumulator = 0.0f;
 	}
+
+	bool spaceDown = mWindowManager.keyDown(Space);
+
+	glm::vec2 cursorPosition = mWindowManager.cursorPosition();
+	glm::vec2 cursorDelta = cursorPosition - mLastCursorPosition;
+	mLastCursorPosition = cursorPosition;
+
+	// Input controls all CharacterControllers in the scene
+	for (const EntityID& ID : mControllerEntityIDs)
+	{
+		Transform& transform = mTransformManager.getComponent(ID);
+		CharacterController& controller = mCharacterControllerManager.getComponent(ID);
+
+		transform.rotate(-cursorDelta.x * 0.005f, glm::vec3(0.0f, 1.0f, 0.0f));
+
+		physx::PxRaycastBuffer hit;
+		bool grounded = scene->raycast({ transform.position.x , transform.position.y - 0.5f * controller.height - controller.radius, transform.position.z }, { 0.0f, -1.0f, 0.0f }, 0.5f, hit, (physx::PxHitFlags)physx::PxHitFlag::eDEFAULT, physx::PxQueryFilterData(physx::PxQueryFlag::eSTATIC));
+
+		if (grounded)
+		{
+			glm::vec3 xzVelocity(0.0f);
+			xzVelocity += transform.direction() * forwardSlerp.sample();
+			xzVelocity += transform.direction(glm::vec3(0.0f, 0.0f, 1.0f)) * backSlerp.sample();
+			xzVelocity += transform.direction(glm::vec3(-1.0f, 0.0f, 0.0f)) * leftSlerp.sample();
+			xzVelocity += transform.direction(glm::vec3(1.0f, 0.0f, 0.0f)) * rightSlerp.sample();
+			float length = glm::length(xzVelocity);
+			if (length > 1.0f)
+				xzVelocity /= length;
+			xzVelocity *= controller.speed;
+
+			controller.velocity.x = xzVelocity.x;
+			controller.velocity.z = xzVelocity.z;
+
+			if (spaceDown)
+				controller.velocity.y = controller.jumpSpeed;
+			else
+				controller.velocity.y = 0.0f;
+		}
+		else
+			controller.velocity.y -= 9.8 * deltaTime;
+		
+		glm::vec3 displacement = controller.velocity * deltaTime;
+		controller.pxController->move({ displacement.x, displacement.y, displacement.z }, 0.01f, deltaTime, 0);
+		
+		const physx::PxExtendedVec3 position = controller.pxController->getPosition();
+		transform.position = glm::vec3(position.x, position.y, position.z);
+	}
+}
+
+void PhysicsSystem::forwardKey()
+{
+	forwardSlerp.reverse();
+}
+
+void PhysicsSystem::backKey()
+{
+	backSlerp.reverse();
+}
+
+void PhysicsSystem::leftKey()
+{
+	leftSlerp.reverse();
+}
+
+void PhysicsSystem::rightKey()
+{
+	rightSlerp.reverse();
 }

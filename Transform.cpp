@@ -1,6 +1,11 @@
 #include "Transform.h"
 #include <iostream>
 
+void printVec3(const glm::vec3& vec3)
+{
+	std::cout << vec3.x << ", " << vec3.y << ", " << vec3.z << "\n";
+}
+
 void printMat4(const glm::mat4& matrix)
 {
 	for (unsigned int i = 0; i < 4; i++)
@@ -15,9 +20,20 @@ void printMat4(const glm::mat4& matrix)
 	}
 }
 
-void printVec3(const glm::vec3& vec3)
+TransformCreateInfo::operator Transform() const
 {
-	std::cout << vec3.x << ", " << vec3.y << ", " << vec3.z << std::endl;
+	Transform transform = {};
+	transform.matrix = glm::mat4(1.0f);
+	transform.lastPosition = glm::vec3(0.0f);
+	transform.lastRotation = glm::vec3(0.0f);
+	transform.lastScale = glm::vec3(1.0f);
+	transform.position = position;
+	transform.rotation = rotation;
+	transform.scale = scale;
+	transform.worldPosition = glm::vec3(0.0f);
+	transform.worldRotation = glm::vec3(0.0f);
+	transform.worldScale = glm::vec3(1.0f);
+	return transform;
 }
 
 glm::vec3 Transform::direction(const glm::vec3& direction) const
@@ -50,8 +66,8 @@ void Transform::addChild(const Entity& child)
 	/* Assuming the child had no parent previous to this procedure (it shouldn't have); it would be in the system, and must be removed
 	   because children are not included in the system because the children update via their parents first updating invoking each of their children's update methods */
 	TransformSystem& transformSystem = TransformSystem::instance();
-	transformSystem.mEntityIDs.erase(std::find(transformSystem.mEntityIDs.begin(), transformSystem.mEntityIDs.end(), child.ID())); 
-	
+	transformSystem.mEntityIDs.erase(std::find(transformSystem.mEntityIDs.begin(), transformSystem.mEntityIDs.end(), child.ID()));
+
 	child.getComponent<Transform>().parentID = entityID; // Set child's parent to this
 	childrenIDs.push(child.ID()); // Add child to children array
 }
@@ -65,7 +81,7 @@ void Transform::removeChild(const Entity& child)
 	childrenIDs.remove(childrenIDs.find(child.ID())); // Remove child from children array
 }
 
-unsigned int Transform::subscribeChangedEvent(const std::function<void(const Transform&)>& callback)
+unsigned int Transform::subscribeChangedEvent(const std::function<void(Transform&)>& callback)
 {
 	changedCallbacks.push(callback);
 	return changedCallbacks.length - 1;
@@ -76,20 +92,13 @@ void Transform::unsubscribeChangedEvent(const unsigned int& index)
 	changedCallbacks.remove(index);
 }
 
-TransformCreateInfo::operator Transform() const
+TransformCreateInfo Transform::serializeInfo() const
 {
-	Transform transform = {};
-	transform.matrix = glm::mat4(1.0f);
-	transform.lastPosition = glm::vec3(0.0f);
-	transform.lastRotation = glm::vec3(0.0f);
-	transform.lastScale = glm::vec3(1.0f);
-	transform.position = position;
-	transform.rotation = rotation;
-	transform.scale = scale;
-	transform.worldPosition = glm::vec3(0.0f);
-	transform.worldRotation = glm::vec3(0.0f);
-	transform.worldScale = glm::vec3(1.0f);
-	return transform;
+	TransformCreateInfo serializeInfo;
+	serializeInfo.position = position;
+	serializeInfo.rotation = rotation;
+	serializeInfo.scale = scale;
+	return serializeInfo;
 }
 
 TransformSystem::TransformSystem()
@@ -110,9 +119,9 @@ void TransformSystem::updateTransform(const EntityID& entityID) const
 	if (transform.parentID) // If transform has a parent
 	{
 		const Transform& parentTransform = mTransformManager.getComponent(transform.parentID);
-		
+
 		// Position is also changed if it's parents position, rotation, or scale has changed
-		transform.positionChanged |= parentTransform.positionChanged || parentTransform.rotationChanged || parentTransform.scaleChanged; 
+		transform.positionChanged |= parentTransform.positionChanged || parentTransform.rotationChanged || parentTransform.scaleChanged;
 		transform.rotationChanged |= parentTransform.rotationChanged; // Rotation is also changed if it's parents rotation has changed
 		transform.scaleChanged |= parentTransform.scaleChanged; // Scale is also changed if it's parents scale has changed
 
@@ -126,14 +135,14 @@ void TransformSystem::updateTransform(const EntityID& entityID) const
 
 			if (transform.rotationChanged)
 				transform.worldRotation = parentTransform.worldRotation * transform.rotation; // Update world rotation
-			
+
 			if (transform.scaleChanged)
 				transform.worldScale = parentTransform.worldScale * transform.scale; // Update world scale
 
 			// Invoke changed callbacks
 			for (unsigned int i = 0; i < transform.changedCallbacks.length; i++)
 				transform.changedCallbacks[i](transform);
-			
+
 			transform.lastPosition = transform.position;
 			transform.lastRotation = transform.rotation;
 			transform.lastScale = transform.scale;
@@ -144,14 +153,14 @@ void TransformSystem::updateTransform(const EntityID& entityID) const
 		if (transform.positionChanged || transform.rotationChanged || transform.scaleChanged)
 		{
 			transform.matrix = glm::translate(glm::mat4(1.0f), transform.position) * glm::mat4_cast(transform.rotation) * glm::scale(glm::mat4(1.0f), transform.scale);
-			
+
 			transform.worldPosition = transform.position;
 			transform.worldRotation = transform.rotation;
 			transform.worldScale = transform.scale;
 
 			for (unsigned int i = 0; i < transform.changedCallbacks.length; i++)
 				transform.changedCallbacks[i](transform);
-			
+
 			transform.lastPosition = transform.position;
 			transform.lastRotation = transform.rotation;
 			transform.lastScale = transform.scale;

@@ -3,33 +3,32 @@
 #include <functional>
 #include <cassert>
 
-typedef unsigned int ComponentID; // Unique ID assinged to each type of Component
-typedef unsigned long long ComponentBit; // 1 Bit-shifted by ID to indicate position of flag bit in 'Composition' (See Entity.h)
+
+typedef unsigned long long ComponentBit; // 1 bit-shifted by the component ID to indicate the position of flag bit in 'Composition' (See Entity.h)
 
 class ComponentManagerBase
 {
 private:
-	// Incremented on each component manager instantiation, they will not be destroyed until the program terminates because they are all singletons
+	// Incremented on each component manager instantiation, they will not be destroyed until the program terminates because they are singletons
 	static ComponentID queuedID;
 
-	// Maps all component IDs to polymorphic base pointers referencing each manager instance, mainly to allow all components to be easily removed from an entity when destroyed
+	// Maps each component ID to polymorphic pointers referencing a corresponding manager instance
 	static std::unordered_map<ComponentID, ComponentManagerBase*> IDInstanceMap;
 
 protected:
 	ComponentManagerBase();
 
 public:
-	// Interface with IDInstanceMap
 	static ComponentManagerBase& componentManagerFromID(const ComponentID& ID);
 
-	// Associated component ID and bit
 	const ComponentID ID;
 	const ComponentBit bit;
 	
 	~ComponentManagerBase();
 	
-	// Virtual removeComponent subroutine to allow for easy removal from componentID via the function 'componentManagerFromID'
 	virtual void removeComponent(const Entity& entity) = 0;
+
+	virtual std::vector<char> getSerializedComponent(const EntityID& ID) = 0;
 };
 
 // There is one ComponentManager instance managing the storage of each type of Component, attatched to entities
@@ -103,10 +102,16 @@ public:
 			}
 		}
 
-		// Ensures no gaps
+		// No gaps
 		mComponents[IDIterator->second] = mComponents.back(); // Overwrite component being removed with last component
 		mComponents.pop_back(); // Free last component
 		mEntityIndexMap.erase(IDIterator); // Remove entity's ID mapping
+	}
+
+	std::vector<char> getSerializedComponent(const EntityID& ID) override
+	{
+		T& component = getComponent(ID);
+		return /*serialize(component.serializeInfo())*/{};
 	}
 
 	// Interface with component added and removed callback arrays

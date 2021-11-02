@@ -2,8 +2,9 @@
 #include <vector>
 #include <unordered_map>
 
-typedef unsigned int EntityID; // Unique ID assigned to each entity
-typedef unsigned long long Composition; // Set of flags indicating a set of components, unsigned long long limits the engine to a maximum of 64 Component types
+typedef unsigned int EntityID;
+typedef unsigned int ComponentID; // Unique ID assinged to each type of Component
+typedef unsigned long long Composition; // Set of flags describing a set of components, limited to 64 component types
 
 template <typename T>
 class ComponentManager;
@@ -17,31 +18,37 @@ private:
 	static std::vector<EntityID> queuedIDs; // Queue of pending IDs to be assigned to new entities. 0 represents NULL ID, first valid ID is 1
 	static std::unordered_map<EntityID, Composition> compositions; // ID to Compositions map describing what components each entity possesses
 
-	EntityID mID; // Entity's unique ID; only data member data making storage of both EntityIDs (Contiguous) and Entities (Not guranteed contiguous) very efficient aswell as assignment operations
+	EntityID mID;
 
 public:
-	// Retrieve composition from entites ID
+	// Returns an entity's composition from its ID
 	static Composition& compositionFromID(const EntityID& ID); 
 
 	Entity();
 
-	/* Due to the fact that an Entity is simply a Number data-wise, it can be assigned to a different entity becoming a handle to different resources behaving like a reference.
-	   However if you do this ensure the original entity is not 'lost' and will eventually be freed.
-	   I have implemented a 'sceneManager' in the past which allowed for automatic loading and destruction of entities however that is not present anymore
-	   and so is currently manual. Explicit destruction is employed mainly to enable this flexibility */
+	/* Because an Entity's members consist of just an ID, assignment operations simply copy the ID; making the entity reference different resources.
+	   However if you do this, much like manually allocated arrays ensure the original entity is not 'lost' and will be freed exactly once. */
+
 	Entity(const EntityID& ID); 
 	Entity(const Entity& copy);
 	Entity& operator =(const Entity& other);
 
 	void destroy() const;
 	
-	// If IDs are equal meaning they are both reference the exact same entity
+	// Returns true if IDs are equal meaning they are the same entity
 	bool operator ==(const Entity& other) const;
 
+	// Returns the entity's unique ID
 	const EntityID ID() const;
+
+	// Returns the entity's composition
 	Composition& composition() const; 
 
-	// See 'ComponentManager.h', easiest interface to add, get, and remove components from entities
+	/*
+	Adds a component of type T to the entity. Only one component of each type may be added to an entity
+	\param component: The component to be added. Data is copied to a new component stored internally
+	\return A reference to the newly created component
+	*/
 	template <typename T>
 	T& addComponent(T component) const
 	{
@@ -69,4 +76,6 @@ public:
 		static ComponentManager<T>& componentManager = ComponentManager<T>::instance();
 		return (composition() & componentManager.bit) == componentManager.bit;
 	}
+
+	unsigned int numberOfComponents() const;
 };

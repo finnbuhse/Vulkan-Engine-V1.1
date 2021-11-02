@@ -1,8 +1,10 @@
 #include "Mesh.h"
+#include "WindowManager.h"
+#include "Math.h"
 #include "PxPhysicsAPI.h"
 #include "foundation/PxAllocatorCallback.h"
 
-#define SIMULATION_STEP 0.01666666666f // (1/60) 60 Frames per second
+#define SIMULATION_STEP 0.013f
 #define PX_RECORD_MEMORY_ALLOCATIONS true
 #define PX_THREADS 2
 
@@ -29,7 +31,7 @@ struct PxMaterialInfoHasher
 	};
 };
 
-enum RigidBodyType {STATIC, DYNAMIC, KINEMATIC};
+enum RigidBodyType { STATIC, DYNAMIC, KINEMATIC };
 
 struct RigidBody
 {
@@ -86,21 +88,63 @@ struct CharacterController
 {
 	float radius;
 	float height;
-	
+
+	float speed;
+	float jumpSpeed;
 	float maxStepHeight;
 	float maxSlope;
-	float inisibleWallHeight;
+	float invisibleWallHeight;
 	float maxJumpHeight;
-	
+
 	float contactOffset;
 	float cacheVolumeFactor;
-	
+
 	bool slide;
 
-        unsigned int transformChangedCallbackIndex;
-	
 	PxMaterialInfo material;
+
 	physx::PxController* pxController;
+
+	glm::vec3 velocity;
+};
+
+struct CharacterControllerCreateInfo
+{
+	float radius;
+	float height;
+
+	float speed;
+	float jumpSpeed;
+	float maxStepHeight;
+	float maxSlope;
+	float invisibleWallHeight;
+	float maxJumpHeight;
+
+	float contactOffset;
+	float cacheVolumeFactor;
+
+	bool slide;
+
+	PxMaterialInfo material;
+
+	operator CharacterController()
+	{
+		CharacterController characterController;
+		characterController.radius = radius;
+		characterController.height = height;
+		characterController.speed = speed;
+		characterController.jumpSpeed = jumpSpeed;
+		characterController.maxStepHeight = maxStepHeight;
+		characterController.maxSlope = maxSlope;
+		characterController.invisibleWallHeight = invisibleWallHeight;
+		characterController.maxJumpHeight = maxJumpHeight;
+		characterController.contactOffset = contactOffset;
+		characterController.cacheVolumeFactor = cacheVolumeFactor;
+		characterController.slide = slide;
+		characterController.material = material;
+		characterController.velocity = glm::vec3(0.0f);
+		return characterController;
+	}
 };
 
 class PhysicsSystem
@@ -111,15 +155,17 @@ private:
 	std::vector<EntityID> mStaticEntityIDs;
 	std::vector<EntityID> mDynamicEntityIDs;
 	std::vector<EntityID> mControllerEntityIDs;
-	
+
 	Composition mRigidBodyComposition;
 	Composition mCharacterControllerComposition;
-	
+
 	ComponentManager<Transform>& mTransformManager = ComponentManager<Transform>::instance();
 	ComponentManager<Mesh>& mMeshManager = ComponentManager<Mesh>::instance();
 	ComponentManager<RigidBody>& mRigidBodyManager = ComponentManager<RigidBody>::instance();
 	ComponentManager<CharacterController>& mCharacterControllerManager = ComponentManager<CharacterController>::instance();
-	
+	WindowManager& mWindowManager = WindowManager::instance();
+	glm::vec2 mLastCursorPosition;
+
 	physx::PxDefaultAllocator allocatorCallback;
 	physx::PxDefaultErrorCallback errorCallback;
 	physx::PxFoundation* foundation;
@@ -130,8 +176,13 @@ private:
 	physx::PxCpuDispatcher* cpuDispatcher;
 	physx::PxPvdSceneClient* pvdSceneClient;
 	physx::PxControllerManager* controllerManager;
-
+	
 	float accumulator = 0;
+
+	LerpTime forwardSlerp = LerpTime(0.0f, 1.0f, 0.5f);
+	LerpTime backSlerp = LerpTime(0.0f, 1.0f, 0.5f);
+	LerpTime leftSlerp = LerpTime(0.0f, 1.0f, 0.5f);
+	LerpTime rightSlerp = LerpTime(0.0f, 1.0f, 0.5f);
 
 	PhysicsSystem();
 
@@ -149,7 +200,10 @@ public:
 	void controllerComponentAdded(const Entity& entity);
 	void controllerComponentRemoved(const Entity& entity);
 
-        void controllerTransformChanged(const Transform& transform);
-
 	void update(const float& delta);
+
+	void forwardKey();
+	void backKey();
+	void leftKey();
+	void rightKey();
 };

@@ -1,10 +1,21 @@
 #pragma once
 #include "Transform.h"
 
+struct Camera;
+
+struct CameraCreateInfo
+{
+	float fov;
+	float aspect;
+	float zNear, zFar;
+
+	operator Camera() const;
+};
+
 /* To minimise cache misses, components must be stored contiguously meaning they have to be Plain Old Data (POD).
-   For an object to be POD it cannot have any constructors or deconstructors, hence the work around of 'CreateInfos' which have cast operations to their full counterparts
-   however usually just setting member variables. Majority of 'construction' such as subscribing to events and initializing Vectors (See Vector.h)
-   happens in the componentAdded subroutines since the components can equally be 'deconstructed' in the componentRemoved subroutines, this complements the fact that components are redundant
+   For an object to be POD it cannot have any constructors or deconstructors, use CreateInfos which cast to component types, normally just sets member variables.
+   Majority of 'construction' such as subscribing to events and initializing Vectors (See Vector.h) happens in the componentAdded subroutines
+   since components can equally be 'deconstructed' in the componentRemoved subroutines, this complements the fact that components are redundant
    unless they are included in their respective system, and so their data is initialized when added to the system, and destroyed when removed from the system. */
 struct Camera
 {
@@ -34,15 +45,8 @@ struct Camera
 	void unsubscribeProjectionChangedEvent(const unsigned int& index);
 	unsigned int subscribeViewChangedEvent(const std::function<void(const Transform&, const Camera&)>& callback);
 	void unsubscribeViewChangedEvent(const unsigned int& index);
-};
 
-struct CameraCreateInfo
-{
-	float fov;
-	float aspect;
-	float zNear, zFar;
-
-	operator Camera() const;
+	CameraCreateInfo serializeInfo() const;
 };
 
 // Systems operate on entities with a specific set of components
@@ -71,7 +75,7 @@ public:
 	void componentRemoved(const Entity& entity);
 
 	// Invoked everytime a transform whos entity also has a camera has changed
-	void transformChanged(const Transform& transform) const;
+	void transformChanged(Transform& transform) const;
 
 	// Invoked every frame
 	void update() const;

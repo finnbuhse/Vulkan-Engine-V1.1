@@ -3,15 +3,15 @@
 #include <unordered_map>
 #include <string>
 
-#define RGBA VK_FORMAT_R8G8B8A8_UNORM
-#define RGBA_HDR16 VK_FORMAT_R16G16B16A16_SFLOAT
-#define RGBA_HDR32 VK_FORMAT_R32G32B32A32_SFLOAT
+#define FORMAT_R VK_FORMAT_R8_UNORM
+#define FORMAT_RGBA VK_FORMAT_R8G8B8A8_UNORM
+#define FORMAT_RGBA_HDR16 VK_FORMAT_R16G16B16A16_SFLOAT
+#define FORMAT_RGBA_HDR32 VK_FORMAT_R32G32B32A32_SFLOAT
 
 struct TextureInfo
 {
-	// Directory of texture relative to the current working directory and format to store pixels loaded
-	std::string directory;
-	VkFormat format;
+	std::string directory; // Directory of texture relative to the current working directory
+	VkFormat format; // Format to store loaded pixels in
 
 	inline bool operator ==(const TextureInfo& right) const
 	{
@@ -19,16 +19,15 @@ struct TextureInfo
 	}
 };
 
-// Object which includes a hash function used by std::unordered_map to generate a hash based on the texture info
+// Used by std::unordered_map to generate a hash based on texture info
 struct TextureInfoHasher
 {
-	
 	inline std::size_t operator()(const TextureInfo& key) const noexcept
 	{
-		/* Previous hash function
+		/* Other hash implementation:
 		return std::hash<std::string>()(key.directory) ^ (std::hash<VkFormat>()(key.format) << 1);
 
-		Easier to use, unsure how it compares in performance to previous hash function. See Vulkan.h for implementation */
+		Replaced for easier to use implementation, unsure how it compares in performance to previous hash function */
 		std::size_t result = hash(key.directory);
 		hashCombine(result, key.format);
 		return result;
@@ -39,8 +38,8 @@ class Texture
 {
 private:
 	friend class TextureManager;
-	friend class Mesh;
 	friend class RenderSystem;
+	friend class Mesh;
 
 	Texture(const TextureInfo& textureInfo);
 
@@ -50,13 +49,15 @@ private:
 	VkSampler mSampler = VK_NULL_HANDLE;
 
 public:
+	const TextureInfo mInfo;
+
 	Texture(const Texture& copy) = delete;
 	~Texture();
 };
 
 struct CubemapInfo
 {
-	std::string directories[6]; // ORDER right, left, bottom, top, front, back
+	std::string directories[6]; // right, left, bottom, top, front, back
 	VkFormat format;
 
 	inline bool operator ==(const CubemapInfo& right) const
@@ -114,11 +115,11 @@ private:
 	friend class Texture;
 	friend class Cubemap;
 
-	// Seperate command buffer to render system, texture manager could perhaps run on seperate thread in the future
+	// Seperate command buffer to render system, texture manager could run on seperate thread in the future
 	VkCommandPool mCommandPool = VK_NULL_HANDLE;
 	VkCommandBuffer mCommandBuffer = VK_NULL_HANDLE;
 
-	// Maps to retrieve textures and cubemaps from their info to prevent textures being loaded multiple times
+	// Hash maps to obtain textures and cubemaps via their info to prevent textures being loaded multiple times
 	std::unordered_map<TextureInfo, Texture*, TextureInfoHasher> mTextures;
 	std::unordered_map<CubemapInfo, Cubemap*, CubemapInfoHasher> mCubemaps;
 

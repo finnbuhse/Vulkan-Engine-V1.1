@@ -1,6 +1,6 @@
 #include "Vulkan.h"
+#include "ComponentManager.h"
 #include <fstream>
-#include <iostream>
 
 unsigned int memoryTypeFromProperties(const VkPhysicalDeviceMemoryProperties& deviceMemoryProperties, const VkMemoryPropertyFlags& memoryProperties)
 {
@@ -12,26 +12,19 @@ unsigned int memoryTypeFromProperties(const VkPhysicalDeviceMemoryProperties& de
 	assert(("[ERROR] Memory type with specified properties not found", false));
 }
 
-void print(const std::vector<char>& string)
-{
-	for (char c : string)
-		std::cout << c;
-	std::cout << std::endl;
-}
-
 int find(const std::vector<char>& string, const std::vector<char>& find, const unsigned int& start)
 {
-	unsigned findSpree = 0;
+	unsigned nFoundCharacters = 0;
 	for (unsigned int i = start; i < string.size(); i++)
 	{
-		if (string[i] == find[findSpree])
+		if (string[i] == find[nFoundCharacters])
 		{
-			findSpree++;
-			if (findSpree == find.size())
-				return i - findSpree + 1;
+			nFoundCharacters++;
+			if (nFoundCharacters == find.size())
+				return i - nFoundCharacters + 1;
 		}
 		else
-			findSpree = 0;
+			nFoundCharacters = 0;
 	}
 	return -1;
 }
@@ -87,4 +80,22 @@ void writeConstants(std::vector<char>& string, const std::vector<ShaderConstant>
 		string.erase(string.begin() + writeBegin, string.begin() + end - 1);
 		string.insert(string.begin() + writeBegin, constant.value, constant.value + valueLength);
 	}
+}
+
+template <>
+std::vector<char> serialize(const std::string& string)
+{
+	std::vector<char> result;
+
+	std::vector<char> vecData = serialize((unsigned int)string.size());
+	result.insert(result.end(), vecData.begin(), vecData.end());
+
+	result.insert(result.end(), string.c_str(), string.c_str() + string.size());
+	return result;
+}
+
+template <>
+void deserialize(const std::vector<char>& vecData, std::string& write)
+{
+	write = std::string(vecData.data(), vecData.data() + vecData.size());
 }

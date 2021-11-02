@@ -16,11 +16,11 @@ struct Material
 
 struct MaterialCreateInfo
 {
-	std::string albedo;
-	std::string normal;
-	std::string roughness;
-	std::string metalness;
-	std::string ambientOcclusion;
+	std::string albedo = "";
+	std::string normal = "";
+	std::string roughness = "";
+	std::string metalness = "";
+	std::string ambientOcclusion = "";
 
 	operator Material() const;
 };
@@ -35,6 +35,10 @@ struct Vertex
 
 struct Mesh
 {
+	unsigned int nVertices;
+	unsigned int nIndices;
+	Material material;
+
 	// Vertex buffer stores vertices
 	VkBuffer vertexBuffer;
 	VkDeviceMemory vertexMemory;
@@ -56,29 +60,25 @@ struct Mesh
 	VkDeviceMemory uniformStagingMemory;
 	unsigned char* uniformData;
 
-	Material material;
-
 	VkDescriptorSet descriptorSet;
-
-	unsigned int nVertices;
-	unsigned int nIndices;
 
 	unsigned int transformChangedCallbackIndex;
 
+	void reallocateBuffers(); // Should be called if nVertices or nIndices are changed
 	void updateBuffers(); // Should be called if vertices or indices are changed
+
 	void updateMaterial(); // Should be called if the material is changed
 
 	std::vector<glm::vec3> positions();
+
+	Mesh serializeInfo() const { return *this; } // Specific serialize/deserialize method used
 };
 
-struct MeshCreateInfo
-{
-	unsigned int nVertices;
-	unsigned int nIndices;
-	Material material;
+template <>
+std::vector<char> serialize(const Mesh& mesh);
 
-	operator Mesh() const;
-};
+template <>
+void deserialize(const std::vector<char>& vecData, Mesh& write);
 
 struct DirectionalLight
 {
@@ -95,6 +95,8 @@ struct DirectionalLight
 	glm::vec3 colour;
 
 	unsigned int transformChangedCallbackIndex;
+
+	DirectionalLightCreateInfo serializeInfo() const;
 };
 
 struct DirectionalLightCreateInfo
@@ -108,12 +110,11 @@ class RenderSystem
 {
 private:
 	friend Mesh;
+
+	friend class TextureManager;
 	friend class Texture;
 	friend class Cubemap;
-	friend class TextureManager;
 
-	/* RenderSystem behaves as a system not only for Meshes but also lights as updating them is primitive but they are very involved in the lighting pass
-	   So it makes sense to have them as member variables */
 	Composition mMeshComposition;
 	Composition mDirectionalLightComposition;
 
@@ -248,6 +249,7 @@ public:
 	void initialize();
 
 private:
+	void createMeshBuffers(Mesh& mesh);
 	void addMesh(const Entity& entity);
 	void removeMesh(const std::vector<EntityID>::iterator& IDIterator);
 
@@ -267,10 +269,10 @@ public:
 	void directionalLightAdded(const Entity& entity);
 	void directionalLightRemoved(const Entity& entity);
 
-	void meshTransformChanged(const Transform& transform);
+	void meshTransformChanged(Transform& transform);
 
 	void directionalLightChanged(const DirectionalLight& directionalLight);
-	void directionalLightTransformChanged(const Transform& transform);
+	void directionalLightTransformChanged(Transform& transform);
 
 	void cameraProjectionChanged(const Camera& camera);
 	void cameraViewChanged(const Transform& transform, const Camera& camera);

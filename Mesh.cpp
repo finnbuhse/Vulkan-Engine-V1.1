@@ -21,13 +21,20 @@ MaterialCreateInfo::operator Material() const
 	TextureManager& textureManager = TextureManager::instance();
 
 	Material material;
-	material.albedo = &textureManager.getTexture({ albedo, VK_FORMAT_R8G8B8A8_SRGB });
-	material.normal = &textureManager.getTexture({ normal, VK_FORMAT_R8G8B8A8_UNORM }); // 3 Channel formats are unsupported
-	material.roughness = &textureManager.getTexture({ roughness, VK_FORMAT_R8_UNORM });
-	material.metalness = &textureManager.getTexture({ metalness, VK_FORMAT_R8_UNORM });
-	material.ambientOcclusion = &textureManager.getTexture({ ambientOcclusion, VK_FORMAT_R8_UNORM });
+	material.albedo = albedo == "" ? nullptr : &textureManager.getTexture({ albedo, VK_FORMAT_R8G8B8A8_SRGB });
+	material.normal = normal == "" ? nullptr : &textureManager.getTexture({ normal, VK_FORMAT_R8G8B8A8_UNORM }); // 3 Channel formats are unsupported
+	material.roughness = roughness == "" ? nullptr : &textureManager.getTexture({ roughness, VK_FORMAT_R8_UNORM });
+	material.metalness = metalness == "" ? nullptr : &textureManager.getTexture({ metalness, VK_FORMAT_R8_UNORM });
+	material.ambientOcclusion = ambientOcclusion == "" ? nullptr : &textureManager.getTexture({ ambientOcclusion, VK_FORMAT_R8_UNORM });
 	return material;
-}					   
+}
+
+void Mesh::reallocateBuffers()
+{
+	RenderSystem& renderSystem = RenderSystem::instance();
+
+	renderSystem.createMeshBuffers(*this);
+}
 
 void Mesh::updateBuffers()
 {
@@ -166,13 +173,129 @@ std::vector<glm::vec3> Mesh::positions()
 	return positions;
 }
 
-MeshCreateInfo::operator Mesh() const
+template <>
+std::vector<char> serialize(const Mesh& mesh)
 {
-	Mesh mesh;
-	mesh.nVertices = nVertices;
-	mesh.nIndices = nIndices;
-	mesh.material = material;
-	return mesh;
+	std::vector<char> result;
+
+	// N Vertices, vertices, N Indices, indices, textureDirectory size & string * 5
+
+	// Vertices
+	std::vector<char> vecData = serialize(mesh.nVertices);
+	result.insert(result.end(), vecData.begin(), vecData.end());
+	for (unsigned int i = 0; i < mesh.nVertices; i++)
+	{
+		vecData = serialize(mesh.vertices[i]);
+		result.insert(result.end(), vecData.begin(), vecData.end());
+	}
+
+	// Indices
+	vecData = serialize(mesh.nIndices);
+	result.insert(result.end(), vecData.begin(), vecData.end());
+	for (unsigned int i = 0; i < mesh.nIndices; i++)
+	{
+		vecData = serialize(mesh.indices[i]);
+		result.insert(result.end(), vecData.begin(), vecData.end());
+	}
+
+	// Textures
+	vecData = serialize(mesh.material.albedo->mInfo.directory);
+	result.insert(result.end(), vecData.begin(), vecData.end());
+
+	vecData = serialize(mesh.material.normal->mInfo.directory);
+	result.insert(result.end(), vecData.begin(), vecData.end());
+
+	vecData = serialize(mesh.material.roughness->mInfo.directory);
+	result.insert(result.end(), vecData.begin(), vecData.end());
+
+	vecData = serialize(mesh.material.metalness->mInfo.directory);
+	result.insert(result.end(), vecData.begin(), vecData.end());
+
+	vecData = serialize(mesh.material.ambientOcclusion->mInfo.directory);
+	result.insert(result.end(), vecData.begin(), vecData.end());
+
+	return result;
+}
+
+template <>
+void deserialize(const std::vector<char>& vecData, Mesh& mesh) // Mesh must be attatched to an entity
+{
+	// N Vertices, N indices
+	const char* p = vecData.data();
+	unsigned int begin = 0;
+	unsigned int size = sizeof(unsigned int);
+	deserialize(std::vector<char>(p, p + size), mesh.nVertices);
+	begin += size;
+	unsigned int verticesStart = begin;
+	unsigned int verticesSize = sizeof(Vertex) * mesh.nVertices;
+	begin += verticesSize;
+
+	deserialize(std::vector<char>(p + begin, p + begin + size), mesh.nIndices);
+	begin += size;
+
+	mesh.reallocateBuffers();
+
+	// Vertices, Indices
+	memcpy(mesh.vertices, p + verticesStart, verticesSize);
+
+	size = sizeof(unsigned int) * mesh.nIndices;
+	memcpy(mesh.indices, p + begin, size);
+	begin += size;
+
+	mesh.updateBuffers();
+
+	// Albedo
+	size = sizeof(unsigned int);
+	unsigned int stringSize;
+	deserialize(std::vector<char>(p + begin, p + begin + size), stringSize);
+	begin += size;
+
+	size = stringSize;
+	std::string textureString;
+	deserialize(std::vector<char>(p + begin, p + begin + size), textureString);
+	mesh.material.albedo = &TextureManager::instance().getTexture({ textureString, FORMAT_RGBA });
+	begin += size;
+
+	// Normal
+	size = sizeof(unsigned int);
+	deserialize(std::vector<char>(p + begin, p + begin + size), stringSize);
+	begin += size;
+
+	size = stringSize;
+	deserialize(std::vector<char>(p + begin, p + begin + size), textureString);
+	mesh.material.normal = &TextureManager::instance().getTexture({ textureString, FORMAT_RGBA });
+	begin += size;
+
+	// Roughness
+	size = sizeof(unsigned int);
+	deserialize(std::vector<char>(p + begin, p + begin + size), stringSize);
+	begin += size;
+
+	size = stringSize;
+	deserialize(std::vector<char>(p + begin, p + begin + size), textureString);
+	mesh.material.roughness = &TextureManager::instance().getTexture({ textureString, FORMAT_R });
+	begin += size;
+
+	// Metalness
+	size = sizeof(unsigned int);
+	deserialize(std::vector<char>(p + begin, p + begin + size), stringSize);
+	begin += size;
+
+	size = stringSize;
+	deserialize(std::vector<char>(p + begin, p + begin + size), textureString);
+	mesh.material.metalness = &TextureManager::instance().getTexture({ textureString, FORMAT_R });
+	begin += size;
+
+	// Ambient occlusion
+	size = sizeof(unsigned int);
+	deserialize(std::vector<char>(p + begin, p + begin + size), stringSize);
+	begin += size;
+
+	size = stringSize;
+	deserialize(std::vector<char>(p + begin, p + begin + size), textureString);
+	mesh.material.ambientOcclusion = &TextureManager::instance().getTexture({ textureString, FORMAT_R });
+
+	mesh.updateMaterial();
 }
 
 DirectionalLightCreateInfo::operator DirectionalLight() const
@@ -1655,11 +1778,22 @@ void RenderSystem::initialize()
 	vkUpdateDescriptorSets(mDevice, 1, &descriptorSetWrite, 0, nullptr);
 }
 
-void RenderSystem::addMesh(const Entity& entity)
+void RenderSystem::createMeshBuffers(Mesh& mesh)
 {
-	Mesh& mesh = entity.getComponent<Mesh>();
+	if (mesh.vertexBuffer || mesh.indexBuffer)
+	{
+		vkFreeMemory(mDevice, mesh.vertexMemory, nullptr);
+		vkDestroyBuffer(mDevice, mesh.vertexBuffer, nullptr);
+		vkUnmapMemory(mDevice, mesh.vertexStagingMemory);
+		vkFreeMemory(mDevice, mesh.vertexStagingMemory, nullptr);
+		vkDestroyBuffer(mDevice, mesh.vertexStagingBuffer, nullptr);
+		vkFreeMemory(mDevice, mesh.indexMemory, nullptr);
+		vkDestroyBuffer(mDevice, mesh.indexBuffer, nullptr);
+		vkUnmapMemory(mDevice, mesh.indexStagingMemory);
+		vkFreeMemory(mDevice, mesh.indexStagingMemory, nullptr);
+		vkDestroyBuffer(mDevice, mesh.indexStagingBuffer, nullptr);
+	}
 
-	#pragma region Create mesh resources
 	unsigned int localMemoryType = memoryTypeFromProperties(mPhysicalDeviceMemoryProperties, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 	unsigned int hostMemoryType = memoryTypeFromProperties(mPhysicalDeviceMemoryProperties, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 
@@ -1727,15 +1861,41 @@ void RenderSystem::addMesh(const Entity& entity)
 	vkBindBufferMemory(mDevice, mesh.indexStagingBuffer, mesh.indexStagingMemory, 0);
 
 	vkMapMemory(mDevice, mesh.indexStagingMemory, 0, bufferCreateInfo.size, 0, (void**)&mesh.indices);
+}
+
+void RenderSystem::addMesh(const Entity& entity)
+{
+	Mesh& mesh = entity.getComponent<Mesh>();
+
+	#pragma region Create mesh resources
+	unsigned int localMemoryType = memoryTypeFromProperties(mPhysicalDeviceMemoryProperties, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+	unsigned int hostMemoryType = memoryTypeFromProperties(mPhysicalDeviceMemoryProperties, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+
+	mesh.vertexBuffer = VK_NULL_HANDLE;
+	mesh.indexBuffer = VK_NULL_HANDLE;
+	if (mesh.nVertices != 0 && mesh.nIndices != 0)
+		createMeshBuffers(mesh);
 
 	// Create uniform buffer
-	unsigned int uniformBufferRange = sizeof(glm::mat4) * 2;
+	unsigned int uniformBufferRange = sizeof(glm::mat4) * 2; // Model matrix, normal matrix
+	VkBufferCreateInfo bufferCreateInfo = {};
+	bufferCreateInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+	bufferCreateInfo.pNext = nullptr;
+	bufferCreateInfo.flags = 0;
 	bufferCreateInfo.size = uniformBufferRange;
 	bufferCreateInfo.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+	bufferCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+	bufferCreateInfo.queueFamilyIndexCount = 0;
+	bufferCreateInfo.pQueueFamilyIndices = nullptr;
+	
 	vkCreateBuffer(mDevice, &bufferCreateInfo, nullptr, &mesh.uniformBuffer);
 
+	VkMemoryRequirements memoryRequirements;
 	vkGetBufferMemoryRequirements(mDevice, mesh.uniformBuffer, &memoryRequirements);
 
+	VkMemoryAllocateInfo memoryAllocateInfo = {};
+	memoryAllocateInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+	memoryAllocateInfo.pNext = nullptr;
 	memoryAllocateInfo.allocationSize = memoryRequirements.size;
 	memoryAllocateInfo.memoryTypeIndex = localMemoryType;
 	vkAllocateMemory(mDevice, &memoryAllocateInfo, nullptr, &mesh.uniformMemory);
@@ -1785,7 +1945,8 @@ void RenderSystem::addMesh(const Entity& entity)
 	vkUpdateDescriptorSets(mDevice, 1, &descriptorSetWrite, 0, nullptr);
 	#pragma endregion
 
-	mesh.updateMaterial();
+	if(mesh.material.albedo && mesh.material.normal && mesh.material.roughness && mesh.material.metalness && mesh.material.ambientOcclusion)
+		mesh.updateMaterial();
 
 	Transform& transform = entity.getComponent<Transform>();
 	mesh.transformChangedCallbackIndex = transform.subscribeChangedEvent(std::bind(&RenderSystem::meshTransformChanged, this, std::placeholders::_1));
@@ -2032,7 +2193,7 @@ void RenderSystem::directionalLightRemoved(const Entity& entity)
 		removeDirectionalLight(IDIterator);
 }
 
-void RenderSystem::meshTransformChanged(const Transform& transform)
+void RenderSystem::meshTransformChanged(Transform& transform)
 {
 	Mesh& mesh = mMeshManager.getComponent(transform.entityID);
 	memcpy(mesh.uniformData, &transform.matrix, sizeof(glm::mat4));
@@ -2109,7 +2270,7 @@ void RenderSystem::directionalLightChanged(const DirectionalLight& directionalLi
 	#pragma endregion
 }
 
-void RenderSystem::directionalLightTransformChanged(const Transform& transform)
+void RenderSystem::directionalLightTransformChanged(Transform& transform)
 {
 	DirectionalLight& directionalLight = mDirectionalLightManager.getComponent(transform.entityID);
 	glm::vec3 direction = transform.worldDirection();
@@ -2400,7 +2561,7 @@ const Entity processMesh(const aiMesh* aiMesh, const aiScene* aiScene, const std
 	else
 		material.ambientOcclusion = textures[0];
 	
-	Mesh& mesh = meshEntity.addComponent<Mesh>(MeshCreateInfo{ aiMesh->mNumVertices, aiMesh->mNumFaces * 3, material });
+	Mesh& mesh = meshEntity.addComponent<Mesh>(Mesh{ aiMesh->mNumVertices, aiMesh->mNumFaces * 3, material });
 
 	for (unsigned int i = 0; i < aiMesh->mNumVertices; i++)
 	{
@@ -2410,7 +2571,6 @@ const Entity processMesh(const aiMesh* aiMesh, const aiScene* aiScene, const std
 		mesh.vertices[i].textureCoordinate = glm::vec2(aiMesh->mTextureCoords[0][i].x, aiMesh->mTextureCoords[0][i].y); // Each vertex can have multiple texture coordinates; only use first channel
 	}
 
-	unsigned int* indices = new unsigned int[aiMesh->mNumFaces * 3];
 	for (unsigned int i = 0; i < aiMesh->mNumFaces; i++)
 	{
 		for (unsigned int j = 0; j < 3; j++)
@@ -2448,8 +2608,6 @@ const Entity processNode(const aiNode* aiNode, const aiScene* aiScene, std::vect
 	return nodeEntity;
 }
 
-#include <iostream>
-
 std::vector<Entity> loadModel(const char* directory)
 {
 	std::vector<Entity> model;
@@ -2482,4 +2640,11 @@ void applyMaterial(const std::vector<Entity>& model, const Material& material)
 		mesh->material = material;
 		mesh->updateMaterial();
 	}
+}
+
+DirectionalLightCreateInfo DirectionalLight::serializeInfo() const
+{
+	DirectionalLightCreateInfo serializeInfo;
+	serializeInfo.colour = colour;
+	return serializeInfo;
 }

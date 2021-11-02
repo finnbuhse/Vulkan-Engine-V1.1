@@ -22,6 +22,16 @@ void Camera::unsubscribeViewChangedEvent(const unsigned int& index)
 	viewChangedCallbacks.remove(index);
 }
 
+CameraCreateInfo Camera::serializeInfo() const
+{
+	CameraCreateInfo serializeInfo;
+	serializeInfo.fov = fov;
+	serializeInfo.aspect = aspect;
+	serializeInfo.zNear = zNear;
+	serializeInfo.zFar = zFar;
+	return serializeInfo;
+}
+
 CameraCreateInfo::operator Camera() const
 {
 	Camera camera;
@@ -88,7 +98,7 @@ void CameraSystem::componentRemoved(const Entity& entity)
 	}
 }
 
-void CameraSystem::transformChanged(const Transform& transform) const
+void CameraSystem::transformChanged(Transform& transform) const
 {
 	Camera& camera = mCameraManager.getComponent(transform.entityID);
 	 

@@ -7,6 +7,9 @@ struct CameraController
 {
 	float movementSpeed;
 	float mouseSensitivity;
+	bool movement;
+	bool pitch;
+	bool yaw;
 };
 
 class CameraControllerSystem

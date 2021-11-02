@@ -35,16 +35,16 @@ Entity& Entity::operator=(const Entity& other)
 	return *this;
 }
 
+#include <iostream>
+
 void Entity::destroy() const
 {
 	// Remove all components from entity
 	Composition composition = compositions[mID];
-	ComponentBit bit = 1;
 	for (ComponentID componentID = 0; componentID < 64; componentID++)
 	{
-		if (composition & bit)
+		if ((composition >> componentID) & 1)
 			ComponentManagerBase::componentManagerFromID(componentID).removeComponent(*this);
-		bit <<= 1;
 	}
 
 	compositions.erase(mID); // Remove entity's composition entry in map
@@ -64,4 +64,16 @@ const EntityID Entity::ID() const
 Composition& Entity::composition() const
 {
 	return compositions[mID];
+}
+
+unsigned int Entity::numberOfComponents() const
+{
+	unsigned int nComponents = 0;
+	Composition composition = compositions[mID];
+	for (ComponentID componentID = 0; componentID < 64; componentID++)
+	{
+		if (composition & (1ULL << componentID))
+			nComponents++;
+	}
+	return nComponents;
 }
