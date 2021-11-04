@@ -3,6 +3,7 @@
 *This repository does not include all the files required to run the project at the moment so it is not advised attempting to do so.*
 
 --== To Build ==--
+
 You will need the following libraries included in your project:
 
 GLFW - https://www.glfw.org
