@@ -83,3 +83,6 @@ public:
 
 template <>
 std::vector<char> serialize(const Entity& entity);
+
+template <>
+void deserialize(const std::vector<char>& vecData, Entity& entity);
