@@ -35,8 +35,6 @@ Entity& Entity::operator=(const Entity& other)
 	return *this;
 }
 
-#include <iostream>
-
 void Entity::destroy() const
 {
 	// Remove all components from entity
@@ -72,8 +70,68 @@ unsigned int Entity::numberOfComponents() const
 	Composition composition = compositions[mID];
 	for (ComponentID componentID = 0; componentID < 64; componentID++)
 	{
-		if (composition & (1ULL << componentID))
+		if ((composition >> componentID) & 1)
 			nComponents++;
 	}
 	return nComponents;
+}
+
+template<>
+std::vector<char> serialize(const Entity& entity)
+{
+	std::vector<char> result;
+	
+	std::vector<char> vecData = serialize(entity.numberOfComponents());
+	result.insert(result.end(), vecData.begin(), vecData.end());
+	
+	for (ComponentID componentID = 0; i < 64; i++)
+	{
+		if((composition >> componentID) & 1)
+		{
+			vecData = serialize(componentID);
+			vecData = ComponentManagerBase::getComponentManager(componentID).getSerializedComponent(entity);
+			result.insert(result.end(), vecData.begin(), vecData.end());
+		}
+	}
+	
+	if(entity.hasComponent<Transform>())
+	{
+		Transform& transform = entity.getComponent<Transform>();
+		vecData = serialize(transform.children.length);
+		
+		for (unsigned int i = 0; i < transform.children.length; i++)
+		{
+			vecData = serialize(transform.children[i].entity);
+			result.insert(result.end(), vecData.begin(), vecData.end());
+		}
+	}
+	
+	return result;
+}
+
+template <>
+void deserialize(const std::vector<char>& vecData, Entity& entity)
+{
+	unsigned int begin = 0;
+	unsigned int size = sizeof(unsigned int);
+	
+	unsigned int nComponents = deserialize(vecData.data(), vecData.data() + size);
+	begin += size;
+	
+	for (unsigned int i = 0; i < nComponents; i++)
+	{
+		size = sizeof(unsigned int);
+		ComponentID componentID = deserialize(vecData.data() + begin, vecData.data() + begin + size);
+		begin += size;
+		
+		if ComponentManager<Transform>::instance().ID():
+		{
+			Transform& transform = entity.addComponent<Transform>();
+			TransformCreateInfo transformCreateInfo;
+			deserialize(std::vector<char>(vecData.data() + begin, vecData.data() + begin + size), transformCreateInfo);
+			transform = transformCreateInfo;
+		}
+	}
+	
+	//....
 }
