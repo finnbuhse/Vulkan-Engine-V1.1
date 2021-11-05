@@ -1,4 +1,5 @@
 #pragma once
+#include "Vulkan.h"
 #include <vector>
 #include <unordered_map>
 
@@ -79,3 +80,6 @@ public:
 
 	unsigned int numberOfComponents() const;
 };
+
+template <>
+std::vector<char> serialize(const Entity& entity);
