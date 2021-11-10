@@ -1,12 +1,14 @@
-#include "Mesh.h"
+#include "Vulkan.h"
+#include "Transform.h"
 #include "WindowManager.h"
 #include "Math.h"
 #include "PxPhysicsAPI.h"
 #include "foundation/PxAllocatorCallback.h"
 
-#define SIMULATION_STEP 0.013f
 #define PX_RECORD_MEMORY_ALLOCATIONS true
 #define PX_THREADS 2
+
+#define CHARACTER_ACCELERATION_TIME 0.3f
 
 struct PxMaterialInfo
 {
@@ -35,27 +37,57 @@ enum RigidBodyType { STATIC, DYNAMIC, KINEMATIC };
 
 struct RigidBody
 {
+	const Entity* entity;
+
 	RigidBodyType type;
-	Mesh* mesh;
-	unsigned char maxVertices;
-	physx::PxConvexMesh* pxMesh;
+
+	glm::vec3* vertices;
+	unsigned int nVertices;
+
+	// Unused for rigid bodies with a convex mesh
+	unsigned int* indices;
+	unsigned int nIndices;
+
+	unsigned char nComputeVertices; // Unused for rigid bodies with a triangle mesh
+
 	PxMaterialInfo material;
 	float density; // Unused for static rigid bodies
-	physx::PxRigidActor* pxRigidBody; // Either static or dynamic rigid body
+
+	physx::PxBase* pxMesh;
+	physx::PxRigidActor* pxRigidBody;
+
+	RigidBody serializeInfo() const { return *this; }
 };
+
+template <>
+std::vector<char> serialize(const RigidBody& rigidbody);
+
+template <>
+void deserialize(const std::vector<char>& vecData, RigidBody& write);
+
+void releaseDeserializedCollections();
 
 struct StaticRigidBodyCreateInfo
 {
-	Mesh* mesh;
-	unsigned char maxVertices;
+	glm::vec3* vertices;
+	unsigned int nVertices;
+
+	unsigned int* indices;
+	unsigned int nIndices; // Assign 0 to use convex mesh, otherwise triangle mesh created with original vertices & indices
+
+	unsigned char nComputeVertices; // Value ignored if nIndices != 0
+
 	PxMaterialInfo material;
 
 	operator RigidBody()
 	{
 		RigidBody rigidBody;
 		rigidBody.type = STATIC;
-		rigidBody.mesh = mesh;
-		rigidBody.maxVertices = maxVertices;
+		rigidBody.vertices = vertices;
+		rigidBody.nVertices = nVertices;
+		rigidBody.indices = indices;
+		rigidBody.nIndices = nIndices;
+		rigidBody.nComputeVertices = nComputeVertices;
 		rigidBody.material = material;
 		return rigidBody;
 	}
@@ -63,8 +95,11 @@ struct StaticRigidBodyCreateInfo
 
 struct DynamicRigidBodyCreateInfo
 {
-	Mesh* mesh;
-	unsigned char maxVertices;
+	glm::vec3* vertices;
+	unsigned int nVertices;
+
+	unsigned char nComputeVertices;
+
 	PxMaterialInfo material;
 	float density;
 	bool kinematic = false;
@@ -76,8 +111,11 @@ struct DynamicRigidBodyCreateInfo
 			rigidBody.type = KINEMATIC;
 		else
 			rigidBody.type = DYNAMIC;
-		rigidBody.mesh = mesh;
-		rigidBody.maxVertices = maxVertices;
+		rigidBody.vertices = vertices;
+		rigidBody.nVertices = nVertices;
+		rigidBody.indices = nullptr;
+		rigidBody.nIndices = 0;
+		rigidBody.nComputeVertices = nComputeVertices;
 		rigidBody.material = material;
 		rigidBody.density = density;
 		return rigidBody;
@@ -150,6 +188,9 @@ struct CharacterControllerCreateInfo
 class PhysicsSystem
 {
 private:
+	/*
+	friend void deserialize(const std::vector<char>& vecData, RigidBody& write); Doesn't work */
+
 	std::unordered_map<PxMaterialInfo, physx::PxMaterial*, PxMaterialInfoHasher> mMaterials;
 
 	std::vector<EntityID> mStaticEntityIDs;
@@ -160,7 +201,6 @@ private:
 	Composition mCharacterControllerComposition;
 
 	ComponentManager<Transform>& mTransformManager = ComponentManager<Transform>::instance();
-	ComponentManager<Mesh>& mMeshManager = ComponentManager<Mesh>::instance();
 	ComponentManager<RigidBody>& mRigidBodyManager = ComponentManager<RigidBody>::instance();
 	ComponentManager<CharacterController>& mCharacterControllerManager = ComponentManager<CharacterController>::instance();
 	WindowManager& mWindowManager = WindowManager::instance();
@@ -170,19 +210,19 @@ private:
 	physx::PxDefaultErrorCallback errorCallback;
 	physx::PxFoundation* foundation;
 	physx::PxPvd* pvd;
+	physx::PxPvdTransport* transport;
 	physx::PxPhysics* physics;
 	physx::PxScene* scene;
 	physx::PxCooking* cooking;
 	physx::PxCpuDispatcher* cpuDispatcher;
 	physx::PxPvdSceneClient* pvdSceneClient;
 	physx::PxControllerManager* controllerManager;
-	
-	float accumulator = 0;
+	physx::PxSerializationRegistry* serializationRegistry;
 
-	LerpTime forwardSlerp = LerpTime(0.0f, 1.0f, 0.5f);
-	LerpTime backSlerp = LerpTime(0.0f, 1.0f, 0.5f);
-	LerpTime leftSlerp = LerpTime(0.0f, 1.0f, 0.5f);
-	LerpTime rightSlerp = LerpTime(0.0f, 1.0f, 0.5f);
+	LerpTime forwardLerp = LerpTime(0.0f, 1.0f, CHARACTER_ACCELERATION_TIME);
+	LerpTime backLerp = LerpTime(0.0f, 1.0f, CHARACTER_ACCELERATION_TIME);
+	LerpTime leftLerp = LerpTime(0.0f, 1.0f, CHARACTER_ACCELERATION_TIME);
+	LerpTime rightLerp = LerpTime(0.0f, 1.0f, CHARACTER_ACCELERATION_TIME);
 
 	PhysicsSystem();
 
@@ -202,8 +242,12 @@ public:
 
 	void update(const float& delta);
 
+	// Invoked on press and release
 	void forwardKey();
 	void backKey();
 	void leftKey();
 	void rightKey();
+
+	physx::PxScene* getScene();
+	physx::PxSerializationRegistry* getSerializationRegistry();
 };
