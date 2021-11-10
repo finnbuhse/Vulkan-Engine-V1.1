@@ -1,7 +1,4 @@
 # Vulkan-Engine-V1.0
-
-*This repository does not include all the files required to run the project at the moment so it is not advised attempting to do so.*
-
 --== To Build ==--
 
 You will need the following libraries included in your project:
@@ -18,5 +15,4 @@ Assimp - https://assimp.org/index.php/downloads
 
 PhysX - https://github.com/NVIDIAGameWorks/PhysX
 
-Currently, if you want to run the project you will need to compile all the shaders into binaries with names corresponding to those found in Mesh.cpp.
-Additionally you need 'default albedo.png', 'default normal.png', 'default roughness.png', 'default metalness', 'default ambient occlusion' aswell as required .dll files from the libraries listed above within the same folder as the executable. 
+For each of these libraries, you will need to add their include directories, and their binaries if they have any (.lib & .dll files). The linker will take care of the .lib files so long as you have provided the correct directory to the files, while .dll files should be copied to the directory where the executable is built.
