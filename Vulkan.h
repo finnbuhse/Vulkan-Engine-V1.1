@@ -2,6 +2,7 @@
 #include "vulkan/vulkan.h"
 #include <vector>
 #include <string>
+#include <cstring>
 #include <cassert>
 
 #define N_DEVICE_FEATURES 55

@@ -1,4 +1,5 @@
 #pragma once
+#include <cstring>
 #include <cassert>
 
 // Basic POD dynamic array struct

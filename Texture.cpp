@@ -119,7 +119,7 @@ Texture::Texture(const TextureInfo& textureInfo)
 			float* data = stbi_loadf(textureInfo.directory.c_str(), &width, &height, &channels, formatInfo.nChannels);
 
 			// Convert floats to float16s before being copied into staging buffer
-			const unsigned long long nElements = unsigned long long(width) * height * formatInfo.nChannels;
+			const unsigned long long nElements = (unsigned long long)width * height * formatInfo.nChannels;
 			textureData = new float16[nElements];
 			for (unsigned long long j = 0; j < nElements; j++)
 				((float16*)textureData)[j] = floatToFloat16(data[j]);
@@ -394,15 +394,15 @@ Cubemap::Cubemap(CubemapInfo cubemapInfo)
 		{
 			for (unsigned int i = 0; i < 6; i++)
 			{
-				float* data = stbi_loadf(cubemapInfo.directories[i].c_str(), &width, &height, &channels, formatInfo.nChannels);
-				assert(("[ERROR] STBI failed to load image", data));
+				float* tempData = stbi_loadf(cubemapInfo.directories[i].c_str(), &width, &height, &channels, formatInfo.nChannels);
+				assert(("[ERROR] STBI failed to load image", tempData));
 
-				const unsigned long long nElements = unsigned long long(width) * height * formatInfo.nChannels;
+				const unsigned long long nElements = (unsigned long long)width * height * formatInfo.nChannels;
 				textureData[i] = new float16[nElements];
 				for (unsigned long long j = 0; j < nElements; j++)
-					((float16*)textureData[i])[j] = floatToFloat16(data[j]);
+					((float16*)textureData[i])[j] = floatToFloat16(tempData[j]);
 
-				stbi_image_free((void*)data);
+				stbi_image_free((void*)tempData);
 			}
 		}
 	}
@@ -415,7 +415,7 @@ Cubemap::Cubemap(CubemapInfo cubemapInfo)
 		}
 	}
 
-	const unsigned long long layerSize = unsigned long long(width) * height * formatInfo.nChannels * formatInfo.bytesPerChannel;
+	const unsigned long long layerSize = (unsigned long long)width * height * formatInfo.nChannels * formatInfo.bytesPerChannel;
 	const VkDeviceSize imageSize = 6 * layerSize;
 	const unsigned int nMips = (unsigned int)std::floor(std::log2(width > height ? width : height)) + 1;
 
