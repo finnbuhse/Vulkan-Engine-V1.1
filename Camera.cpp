@@ -1,5 +1,19 @@
 #include "Camera.h"
 
+CameraCreateInfo::operator Camera() const
+{
+	Camera camera;
+	camera.lastFov = 0.0f;
+	camera.lastAspect = 0.0f;
+	camera.lastZFar = 0.0f;
+	camera.lastZNear = 0.0f;
+	camera.fov = fov;
+	camera.aspect = aspect;
+	camera.zNear = zNear;
+	camera.zFar = zFar;
+	return camera;
+}
+
 unsigned int Camera::subscribeProjectionChangedEvent(const std::function<void(const Camera&)>& callback)
 {
 	projectionChangedCallbacks.push(callback);
@@ -22,28 +36,23 @@ void Camera::unsubscribeViewChangedEvent(const unsigned int& index)
 	viewChangedCallbacks.remove(index);
 }
 
-CameraCreateInfo Camera::serializeInfo() const
+template<>
+std::vector<char> serialize(const Camera& camera)
 {
 	CameraCreateInfo serializeInfo;
-	serializeInfo.fov = fov;
-	serializeInfo.aspect = aspect;
-	serializeInfo.zNear = zNear;
-	serializeInfo.zFar = zFar;
-	return serializeInfo;
+	serializeInfo.fov = camera.fov;
+	serializeInfo.aspect = camera.aspect;
+	serializeInfo.zNear = camera.zNear;
+	serializeInfo.zFar = camera.zFar;
+	return serialize(serializeInfo);
 }
 
-CameraCreateInfo::operator Camera() const
+template<>
+void deserialize(const std::vector<char>& vecData, Camera& write)
 {
-	Camera camera;
-	camera.lastFov = 0.0f;
-	camera.lastAspect = 0.0f;
-	camera.lastZFar = 0.0f;
-	camera.lastZNear = 0.0f;
-	camera.fov = fov;
-	camera.aspect = aspect;
-	camera.zNear = zNear;
-	camera.zFar = zFar;
-	return camera;
+	CameraCreateInfo createInfo;
+	deserialize(vecData, createInfo);
+	write = createInfo;
 }
 
 CameraSystem::CameraSystem()

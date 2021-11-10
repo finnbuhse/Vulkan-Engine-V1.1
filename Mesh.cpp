@@ -178,20 +178,22 @@ std::vector<char> serialize(const Mesh& mesh)
 {
 	std::vector<char> result;
 
-	// N Vertices, vertices, N Indices, indices, textureDirectory size & string * 5
-
-	// Vertices
+	// nVertices
 	std::vector<char> vecData = serialize(mesh.nVertices);
 	result.insert(result.end(), vecData.begin(), vecData.end());
+	
+	// Vertices
 	for (unsigned int i = 0; i < mesh.nVertices; i++)
 	{
 		vecData = serialize(mesh.vertices[i]);
 		result.insert(result.end(), vecData.begin(), vecData.end());
 	}
 
-	// Indices
+	// nIndices
 	vecData = serialize(mesh.nIndices);
 	result.insert(result.end(), vecData.begin(), vecData.end());
+
+	// Indices
 	for (unsigned int i = 0; i < mesh.nIndices; i++)
 	{
 		vecData = serialize(mesh.indices[i]);
@@ -306,15 +308,31 @@ DirectionalLightCreateInfo::operator DirectionalLight() const
 	return light;
 }
 
+DirectionalLightCreateInfo DirectionalLight::serializeInfo() const
+{
+	DirectionalLightCreateInfo serializeInfo;
+	serializeInfo.colour = colour;
+	return serializeInfo;
+}
+
 RenderSystem::RenderSystem()
 {
-	mNPrefilterMips = unsigned int(std::floor(std::log2(PREFILTER_WIDTH_HEIGHT))) + 1;
+	mNPrefilterMips = (unsigned int)std::floor(std::log2(PREFILTER_WIDTH_HEIGHT)) + 1;
 
 	std::vector<char> fragmentSource = readFile("ShaderSource/shader.frag");
 	writeConstants(fragmentSource, { {"MAX_PREFILTER_LOD", std::to_string(mNPrefilterMips).c_str() }, {"MAX_DIRECTIONAL_LIGHTS", std::to_string(MAX_DIRECTIONAL_LIGHTS).c_str() }, {"MAX_POINT_LIGHTS", std::to_string(MAX_POINT_LIGHTS).c_str() }, {"MAX_SPOT_LIGHTS", std::to_string(MAX_SPOT_LIGHTS).c_str() } });
 	writeFile("ShaderSource/shader.frag", fragmentSource);
 
+	std::cout << "Compiling shaders..." << std::endl;
+	system("glslangValidator.exe -V ShaderSource/shader.vert -o vertex.spv");
 	system("glslangValidator.exe -V ShaderSource/shader.frag -o fragment.spv");
+	system("glslangValidator.exe -V ShaderSource/cubemap.vert -o cubemapVertex.spv");
+	system("glslangValidator.exe -V ShaderSource/cubemap.geom -o cubemapGeometry.spv");
+	system("glslangValidator.exe -V ShaderSource/convolute.frag -o convoluteFragment.spv");
+	system("glslangValidator.exe -V ShaderSource/prefilter.frag -o prefilterFragment.spv");
+	system("glslangValidator.exe -V ShaderSource/skybox.vert -o skyboxVertex.spv");
+	system("glslangValidator.exe -V ShaderSource/skybox.frag -o skyboxFragment.spv");
+	std::cout << "Finished." << std::endl;
 	
 	mMeshComposition = mTransformManager.bit | mMeshManager.bit;
 	mDirectionalLightComposition = mTransformManager.bit | mDirectionalLightManager.bit;
@@ -351,31 +369,34 @@ RenderSystem::RenderSystem()
 	applicationInfo.apiVersion = VK_API_VERSION_1_2;
 
 	// Check chosen validation layers are supported
-	unsigned int nAvailableLayers = 0;
-	vkEnumerateInstanceLayerProperties(&nAvailableLayers, nullptr);
-	VkLayerProperties* availableLayers = new VkLayerProperties[nAvailableLayers];
-	vkEnumerateInstanceLayerProperties(&nAvailableLayers, availableLayers);
-	for (unsigned int i = 0; i < sizeof(layers) / sizeof(const char*); i++)
+	if (layers)
 	{
-		bool found = false;
-		for (unsigned int j = 0; j < nAvailableLayers; j++)
+		unsigned int nAvailableLayers = 0;
+		vkEnumerateInstanceLayerProperties(&nAvailableLayers, nullptr);
+		VkLayerProperties* availableLayers = new VkLayerProperties[nAvailableLayers];
+		vkEnumerateInstanceLayerProperties(&nAvailableLayers, availableLayers);
+		for (unsigned int i = 0; i < sizeof(layers) / sizeof(const char*); i++)
 		{
-			if (strcmp(layers[i], availableLayers[j].layerName) == 0)
+			bool found = false;
+			for (unsigned int j = 0; j < nAvailableLayers; j++)
 			{
-				found = true;
-				break;
+				if (strcmp(layers[i], availableLayers[j].layerName) == 0)
+				{
+					found = true;
+					break;
+				}
 			}
+			assert((found, "[ERROR] Validation layer unsupported"));
 		}
-		assert(("[ERROR] Validation layer unsupported", found));
+		delete[] availableLayers;
 	}
-	delete[] availableLayers;
 
 	VkInstanceCreateInfo instanceCreateInfo = {};
 	instanceCreateInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
 	instanceCreateInfo.pNext = nullptr;
 	instanceCreateInfo.flags = 0;
 	instanceCreateInfo.pApplicationInfo = &applicationInfo;
-	instanceCreateInfo.enabledLayerCount = sizeof(layers)/sizeof(unsigned char*);
+	instanceCreateInfo.enabledLayerCount = layers == nullptr ? 0 : sizeof(layers)/sizeof(unsigned char*);
 	instanceCreateInfo.ppEnabledLayerNames = layers;
 	instanceCreateInfo.ppEnabledExtensionNames = glfwGetRequiredInstanceExtensions(&instanceCreateInfo.enabledExtensionCount);
 	vkCreateInstance(&instanceCreateInfo, nullptr, &mVkInstance);
@@ -737,7 +758,7 @@ RenderSystem::RenderSystem()
 	imageCreateInfo.flags = VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
 	imageCreateInfo.imageType = VK_IMAGE_TYPE_2D;
 	imageCreateInfo.format = VK_FORMAT_R32G32B32A32_SFLOAT;
-	imageCreateInfo.extent = { unsigned int(PREFILTER_WIDTH_HEIGHT), unsigned int(PREFILTER_WIDTH_HEIGHT), 1 };
+	imageCreateInfo.extent = { (unsigned int)PREFILTER_WIDTH_HEIGHT, (unsigned int)PREFILTER_WIDTH_HEIGHT, 1 };
 	imageCreateInfo.mipLevels = mNPrefilterMips;
 	imageCreateInfo.arrayLayers = 6;
 	imageCreateInfo.samples = VK_SAMPLE_COUNT_1_BIT;
@@ -791,7 +812,7 @@ RenderSystem::RenderSystem()
 	samplerCreateInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
 	samplerCreateInfo.mipLodBias = 0.0f;
 	samplerCreateInfo.minLod = 0.0f;
-	samplerCreateInfo.maxLod = float(mNPrefilterMips);
+	samplerCreateInfo.maxLod = (float)mNPrefilterMips;
 	samplerCreateInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;;
 	samplerCreateInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
 	samplerCreateInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
@@ -971,7 +992,7 @@ RenderSystem::RenderSystem()
 	for (unsigned int i = 0; i < mNPrefilterMips; i++)
 	{
 		framebufferCreateInfo.pAttachments = &mPrefilterImageViews[i];
-		framebufferCreateInfo.width = framebufferCreateInfo.height = float(PREFILTER_WIDTH_HEIGHT) * std::pow(0.5, i);
+		framebufferCreateInfo.width = framebufferCreateInfo.height = (float)PREFILTER_WIDTH_HEIGHT * std::pow(0.5, i);
 		vkCreateFramebuffer(mDevice, &framebufferCreateInfo, nullptr, &mPrefilterFramebuffers[i]);
 	}
 	#pragma endregion
@@ -1757,7 +1778,7 @@ RenderSystem::RenderSystem()
 
 void RenderSystem::initialize()
 {
-	Texture& brdfLUT = TextureManager::instance().getTexture({ "brdfLUT.png", VK_FORMAT_R8G8B8A8_UNORM });
+	Texture& brdfLUT = TextureManager::instance().getTexture({ "Images/brdfLUT.png", VK_FORMAT_R8G8B8A8_UNORM });
 	VkDescriptorImageInfo brdfLUTImageInfo = {};
 	brdfLUTImageInfo.sampler = brdfLUT.mSampler;
 	brdfLUTImageInfo.imageView = brdfLUT.mImageView;
@@ -2467,7 +2488,7 @@ void RenderSystem::setSkybox(const Cubemap* cubemap)
 	{
 		renderPassBeginInfo.framebuffer = mPrefilterFramebuffers[i];
 
-		unsigned int mipWidthHeight = float(PREFILTER_WIDTH_HEIGHT) * std::pow(0.5, i);
+		unsigned int mipWidthHeight = (float)PREFILTER_WIDTH_HEIGHT * std::pow(0.5, i);
 		renderPassBeginInfo.renderArea = { {0, 0}, {mipWidthHeight, mipWidthHeight} };
 		mPrefilterViewport.width = mipWidthHeight;
 		mPrefilterViewport.height = mipWidthHeight;
@@ -2519,7 +2540,7 @@ const Entity processMesh(const aiMesh* aiMesh, const aiScene* aiScene, const std
 	std::vector<std::string> textures = getTextures(aiMaterial, aiTextureType_DIFFUSE, folder);
 	if (textures.empty())
 	{
-		material.albedo = "default albedo.png";
+		material.albedo = "Images/default albedo.png";
 		std::cout << "[NOTIFICATION] No albedo textures found for " << aiMesh->mName.C_Str() << " using default" << std::endl;
 	}
 	else
@@ -2528,7 +2549,7 @@ const Entity processMesh(const aiMesh* aiMesh, const aiScene* aiScene, const std
 	textures = getTextures(aiMaterial, aiTextureType_NORMALS, folder);
 	if (textures.empty())
 	{
-		material.normal = "default normal.png";
+		material.normal = "Images/default normal.png";
 		std::cout << "[NOTIFICATION] No normal textures found for " << aiMesh->mName.C_Str() << " using default" << std::endl;
 	}
 	else
@@ -2537,7 +2558,7 @@ const Entity processMesh(const aiMesh* aiMesh, const aiScene* aiScene, const std
 	textures = getTextures(aiMaterial, aiTextureType_SHININESS, folder);
 	if (textures.empty())
 	{
-		material.roughness = "default roughness.png";
+		material.roughness = "Images/default roughness.png";
 		std::cout << "[NOTIFICATION] No roughness textures found for " << aiMesh->mName.C_Str() << " using default" << std::endl;
 	}
 	else
@@ -2546,7 +2567,7 @@ const Entity processMesh(const aiMesh* aiMesh, const aiScene* aiScene, const std
 	textures = getTextures(aiMaterial, aiTextureType_REFLECTION, folder);
 	if (textures.empty())
 	{
-		material.metalness = "default metalness.png";
+		material.metalness = "Images/default metalness.png";
 		std::cout << "[NOTIFICATION] No metalness textures found for " << aiMesh->mName.C_Str() << " using default" << std::endl;
 	}	
 	else
@@ -2555,7 +2576,7 @@ const Entity processMesh(const aiMesh* aiMesh, const aiScene* aiScene, const std
 	textures = getTextures(aiMaterial, aiTextureType_AMBIENT, folder);
 	if (textures.empty())
 	{
-		material.ambientOcclusion = "default ambient occlusion.png";
+		material.ambientOcclusion = "Images/default ambient occlusion.png";
 		std::cout << "[NOTIFICATION] No ambient occlusion textures found for " << aiMesh->mName.C_Str() << " using default" << std::endl;
 	}
 	else
@@ -2640,11 +2661,4 @@ void applyMaterial(const std::vector<Entity>& model, const Material& material)
 		mesh->material = material;
 		mesh->updateMaterial();
 	}
-}
-
-DirectionalLightCreateInfo DirectionalLight::serializeInfo() const
-{
-	DirectionalLightCreateInfo serializeInfo;
-	serializeInfo.colour = colour;
-	return serializeInfo;
 }

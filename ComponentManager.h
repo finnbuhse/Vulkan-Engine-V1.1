@@ -1,8 +1,6 @@
 #pragma once
 #include "Entity.h"
 #include <functional>
-#include <cassert>
-
 
 typedef unsigned long long ComponentBit; // 1 bit-shifted by the component ID to indicate the position of flag bit in 'Composition' (See Entity.h)
 
@@ -29,6 +27,7 @@ public:
 	virtual void removeComponent(const Entity& entity) = 0;
 
 	virtual std::vector<char> getSerializedComponent(const EntityID& ID) = 0;
+	virtual void addSerializedComponent(const std::vector<char>& vecData, Entity& entity) = 0;
 };
 
 // There is one ComponentManager instance managing the storage of each type of Component, attatched to entities
@@ -111,7 +110,13 @@ public:
 	std::vector<char> getSerializedComponent(const EntityID& ID) override
 	{
 		T& component = getComponent(ID);
-		return /*serialize(component.serializeInfo())*/{};
+		return serialize(component);
+	}
+
+	void addSerializedComponent(const std::vector<char>& vecData, Entity& entity) override
+	{
+		T& component = addComponent(entity, {});
+		deserialize(vecData, component);
 	}
 
 	// Interface with component added and removed callback arrays

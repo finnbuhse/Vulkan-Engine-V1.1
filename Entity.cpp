@@ -1,4 +1,5 @@
 #include "ComponentManager.h"
+#include "Transform.h"
 
 std::vector<EntityID> Entity::queuedIDs = { 1 };
 std::unordered_map<EntityID, Composition> Entity::compositions;
@@ -80,58 +81,82 @@ template<>
 std::vector<char> serialize(const Entity& entity)
 {
 	std::vector<char> result;
-	
+
 	std::vector<char> vecData = serialize(entity.numberOfComponents());
 	result.insert(result.end(), vecData.begin(), vecData.end());
-	
-	for (ComponentID componentID = 0; i < 64; i++)
+
+	Composition entityComposition = entity.composition();
+
+	for (ComponentID componentID = 0; componentID < 64; componentID++)
 	{
-		if((composition >> componentID) & 1)
+		if ((entityComposition >> componentID) & 1)
 		{
 			vecData = serialize(componentID);
-			vecData = ComponentManagerBase::getComponentManager(componentID).getSerializedComponent(entity);
+			result.insert(result.end(), vecData.begin(), vecData.end());
+			vecData = ComponentManagerBase::componentManagerFromID(componentID).getSerializedComponent(entity.ID());
+			std::vector<char> tempVecData = serialize((unsigned int)vecData.size());
+			result.insert(result.end(), tempVecData.begin(), tempVecData.end());
 			result.insert(result.end(), vecData.begin(), vecData.end());
 		}
 	}
-	
-	if(entity.hasComponent<Transform>())
+
+	if (entity.hasComponent<Transform>())
 	{
 		Transform& transform = entity.getComponent<Transform>();
-		vecData = serialize(transform.children.length);
-		
-		for (unsigned int i = 0; i < transform.children.length; i++)
+		vecData = serialize(transform.childrenIDs.length);
+
+		for (unsigned int i = 0; i < transform.childrenIDs.length; i++)
 		{
-			vecData = serialize(transform.children[i].entity);
+			vecData = serialize(Entity(transform.childrenIDs[i]));
 			result.insert(result.end(), vecData.begin(), vecData.end());
 		}
 	}
-	
+	else
+	{
+		vecData = serialize(0U);
+		result.insert(result.end(), vecData.begin(), vecData.end());
+	}
 	return result;
 }
 
 template <>
 void deserialize(const std::vector<char>& vecData, Entity& entity)
 {
-	unsigned int begin = 0;
+	static unsigned int begin = 0;
 	unsigned int size = sizeof(unsigned int);
-	
-	unsigned int nComponents = deserialize(vecData.data(), vecData.data() + size);
+
+	unsigned int nComponents;
+	deserialize(std::vector<char>(vecData.data(), vecData.data() + size), nComponents);
 	begin += size;
-	
+
 	for (unsigned int i = 0; i < nComponents; i++)
 	{
 		size = sizeof(unsigned int);
-		ComponentID componentID = deserialize(vecData.data() + begin, vecData.data() + begin + size);
+
+		ComponentID componentID;
+		deserialize(std::vector<char>(vecData.data() + begin, vecData.data() + begin + size), componentID);
 		begin += size;
-		
-		if ComponentManager<Transform>::instance().ID():
-		{
-			Transform& transform = entity.addComponent<Transform>();
-			TransformCreateInfo transformCreateInfo;
-			deserialize(std::vector<char>(vecData.data() + begin, vecData.data() + begin + size), transformCreateInfo);
-			transform = transformCreateInfo;
-		}
+
+		unsigned int componentSize;
+		deserialize(std::vector<char>(vecData.data() + begin, vecData.data() + begin + size), componentSize);
+		begin += size;
+
+		size = componentSize;
+		ComponentManagerBase::componentManagerFromID(componentID).addSerializedComponent(std::vector<char>(vecData.data() + begin, vecData.data() + begin + size), entity);
+		begin += size;
 	}
-	
-	//....
+
+	size = sizeof(unsigned int);
+
+	unsigned int nChildren;
+	deserialize(std::vector<char>(vecData.begin() + begin, vecData.begin() + begin + size), nChildren);
+	begin += size;
+
+	for (unsigned int i = 0; i < nChildren; i++)
+	{
+		Entity child;
+		deserialize(std::vector<char>(vecData.begin() + begin, vecData.end()), child);
+	}
+
+	begin = 0;
 }

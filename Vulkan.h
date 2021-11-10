@@ -1,8 +1,8 @@
 #pragma once
-#include "Entity.h"
 #include "vulkan/vulkan.h"
-#include <cassert>
 #include <vector>
+#include <string>
+#include <cassert>
 
 #define N_DEVICE_FEATURES 55
 
@@ -35,7 +35,7 @@ unsigned int memoryTypeFromProperties(const VkPhysicalDeviceMemoryProperties& de
 
 int find(const std::vector<char>&string, const std::vector<char>&find, const unsigned int& start = 0);
 
-std::vector<std::vector<char>> splitString(const std::vector<char>& string, const std::vector<char>& split);
+std::vector<std::vector<char>> split(const std::vector<char>& string, const std::vector<char>& split);
 
 std::vector<char> readFile(const char* directory);
 

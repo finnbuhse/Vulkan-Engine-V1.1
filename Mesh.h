@@ -80,6 +80,15 @@ std::vector<char> serialize(const Mesh& mesh);
 template <>
 void deserialize(const std::vector<char>& vecData, Mesh& write);
 
+struct DirectionalLight;
+
+struct DirectionalLightCreateInfo
+{
+	glm::vec3 colour;
+
+	operator DirectionalLight() const;
+};
+
 struct DirectionalLight
 {
 	// Uniform buffer stores colour and direction
@@ -97,13 +106,6 @@ struct DirectionalLight
 	unsigned int transformChangedCallbackIndex;
 
 	DirectionalLightCreateInfo serializeInfo() const;
-};
-
-struct DirectionalLightCreateInfo
-{
-	glm::vec3 colour;
-
-	operator DirectionalLight() const;
 };
 
 class RenderSystem

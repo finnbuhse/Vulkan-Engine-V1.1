@@ -19,7 +19,7 @@ struct TransformCreateInfo
 };
 
 struct Transform
-{   /* Dynamic array storing the entity IDs of the transform's children.
+{   /* Dynamic array storing the IDs of the transform's children.
 	   IDs should NOT be directly appended and removed from the array but one should use addChild and removeChild */
 	Vector<EntityID> childrenIDs; 
 
@@ -64,9 +64,13 @@ struct Transform
 	// Interface with changedCallbacks
 	unsigned int subscribeChangedEvent(const std::function<void(Transform&)>& callback);
 	void unsubscribeChangedEvent(const unsigned int& index);
-
-	TransformCreateInfo serializeInfo() const;
 };
+
+template<>
+std::vector<char> serialize(const Transform& transform);
+
+template<>
+void deserialize(const std::vector<char>& vecData, Transform& write);
 
 class TransformSystem
 {

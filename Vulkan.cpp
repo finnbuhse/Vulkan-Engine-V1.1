@@ -1,5 +1,4 @@
 #include "Vulkan.h"
-#include "ComponentManager.h"
 #include <fstream>
 
 unsigned int memoryTypeFromProperties(const VkPhysicalDeviceMemoryProperties& deviceMemoryProperties, const VkMemoryPropertyFlags& memoryProperties)
@@ -29,7 +28,7 @@ int find(const std::vector<char>& string, const std::vector<char>& find, const u
 	return -1;
 }
 
-std::vector<std::vector<char>> splitString(const std::vector<char>& string, const std::vector<char>& split)
+std::vector<std::vector<char>> split(const std::vector<char>& string, const std::vector<char>& split)
 {
 	std::vector<std::vector<char>> result;
 

@@ -23,7 +23,7 @@ int main()
 	directionalLight.addComponent<DirectionalLight>(DirectionalLightCreateInfo{ glm::vec3(0.0f) });
 
 	std::vector<Entity> gun = loadModel("AK103/AK_103.fbx");
-	Material gunMaterial = MaterialCreateInfo{ "AK103/AK_103_Base_Color.png", "AK103/AK_103_Normal.png", "AK103/AK_103_Roughness.png", "AK103/AK_103_Metallic.png", "default ambient occlusion.png" };
+	Material gunMaterial = MaterialCreateInfo{ "AK103/AK_103_Base_Color.png", "AK103/AK_103_Normal.png", "AK103/AK_103_Roughness.png", "AK103/AK_103_Metallic.png", "Images/default ambient occlusion.png" };
 	applyMaterial(gun, gunMaterial);
 
 	std::vector<Entity> floor = loadModel("Cube/Cube.obj");
@@ -32,21 +32,27 @@ int main()
 	floorTransform.position = glm::vec3(0.0f, -5.0f, 0.0f);
 
 	std::vector<Mesh*> floorMeshes = findComponentsInModel<Mesh>(floor);
-	floor.back().addComponent<RigidBody>(StaticRigidBodyCreateInfo{ floorMeshes[0], 8, {0.5f, 0.5f, 0.6f} });
-
 	std::vector<char> floorBytes = serialize(*(floorMeshes[0]));
+
+	RigidBody& rb = floor.back().addComponent<RigidBody>(StaticRigidBodyCreateInfo{ floorMeshes[0]->positions().data(), floorMeshes[0]->nVertices, floorMeshes[0]->indices, floorMeshes[0]->nIndices, 8, {0.5f, 0.5f, 0.6f} });
+	std::vector<char> floorRigidBytes = serialize(rb);
+
 	const Entity floor2;
-	floor2.addComponent<Transform>(TransformCreateInfo{ glm::vec3(0.0f, 10.0f, 0.0f) });
+	floor2.addComponent<Transform>(TransformCreateInfo{ glm::vec3(0.0f, 5.0f, 0.0f), glm::vec3(0.0f), glm::vec3(40.0f, 1.0f, 40.0f) });
 	Mesh& floorMesh2 = floor2.addComponent<Mesh>({ 0, 0, MaterialCreateInfo{} });
 	deserialize(floorBytes, floorMesh2);
 
+	RigidBody& floor2RB = floor2.addComponent<RigidBody>(StaticRigidBodyCreateInfo{ nullptr, 0, nullptr, 0, 0, {0.5f, 0.5f, 0.6f} });
+	deserialize(floorRigidBytes, floor2RB);
+	floor2RB.pxRigidBody->setGlobalPose(physx::PxTransform(physx::PxVec3(0.0f, 5.0f, 0.0f)));
+
 	Transform& gunTransform = gun.back().getComponent<Transform>();
-	gunTransform.position = glm::vec3(0.0f, 10.0f, 0.0f);
-	gunTransform.rotate(glm::radians(30.0f), glm::vec3(1.0f, 0.0f, 0.0f));
+	gunTransform.position = glm::vec3(0.0f, 5.0f, 0.0f);
+	gunTransform.rotate(glm::radians(-10.0f), glm::vec3(1.0f, 0.0f, 0.0f));
 	gunTransform.scale = glm::vec3(4.0f);
 
 	std::vector<Mesh*> gunMeshes = findComponentsInModel<Mesh>(gun);
-	gun.back().addComponent<RigidBody>(DynamicRigidBodyCreateInfo{ gunMeshes[0], 40, {0.5f, 0.5f, 0.6f}, 1.0f, false });
+	gun.back().addComponent<RigidBody>(DynamicRigidBodyCreateInfo{ gunMeshes[0]->positions().data(), gunMeshes[0]->nVertices, 40, {0.5f, 0.5f, 0.6f}, 1.0f, false });
 
 	const Entity character;
 	Transform& characterTransform = character.addComponent<Transform>(TransformCreateInfo{ glm::vec3(0.0f, 3.0f, -5.0f) });
@@ -90,10 +96,12 @@ int main()
 		last = now;
 	}
 
+	character.destroy();
 	floor2.destroy();
 	camera.destroy();
 	directionalLight.destroy();
 	destroyModel(gun);
 	destroyModel(floor);
+	releaseDeserializedCollections();
 	return 0;
 }

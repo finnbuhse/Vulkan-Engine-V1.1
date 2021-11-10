@@ -132,7 +132,7 @@ Texture::Texture(const TextureInfo& textureInfo)
 	assert(("[ERROR] STBI failed to load image", textureData));
 
 	const VkDeviceSize imageSize = width * height * formatInfo.nChannels * formatInfo.bytesPerChannel;
-	const unsigned int nMips = unsigned int(std::floor(std::log2(width > height ? width : height))) + 1;
+	const unsigned int nMips = (unsigned int)std::floor(std::log2(width > height ? width : height)) + 1;
 
 	// Check format support for dimensions and image size
 	assert(("[ERROR] Unsupported texture format", formatProperties.maxExtent.width >= width && formatProperties.maxExtent.height >= height && formatProperties.maxExtent.depth >= 1 && formatProperties.maxMipLevels >= 1 && formatProperties.maxArrayLayers >= 1 && formatProperties.sampleCounts & VK_SAMPLE_COUNT_1_BIT && formatProperties.maxResourceSize >= imageSize));
@@ -144,7 +144,7 @@ Texture::Texture(const TextureInfo& textureInfo)
 	imageCreateInfo.flags = 0;
 	imageCreateInfo.imageType = VK_IMAGE_TYPE_2D;
 	imageCreateInfo.format = textureInfo.format;
-	imageCreateInfo.extent = { unsigned int(width), unsigned int(height), 1 };
+	imageCreateInfo.extent = { (unsigned int)width, (unsigned int)height, 1 };
 	imageCreateInfo.mipLevels = nMips;
 	imageCreateInfo.arrayLayers = 1;
 	imageCreateInfo.samples = VK_SAMPLE_COUNT_1_BIT;
@@ -239,7 +239,7 @@ Texture::Texture(const TextureInfo& textureInfo)
 	copyRegion.imageSubresource.baseArrayLayer = 0;
 	copyRegion.imageSubresource.layerCount = 1;
 	copyRegion.imageOffset = { 0, 0, 0 };
-	copyRegion.imageExtent = { unsigned int(width), unsigned int(height), 1 };
+	copyRegion.imageExtent = { (unsigned int)width, (unsigned int)height, 1 };
 	vkCmdCopyBufferToImage(textureManager.mCommandBuffer, stagingBuffer, mImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copyRegion);
 
 	barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
@@ -264,7 +264,7 @@ Texture::Texture(const TextureInfo& textureInfo)
 
 		imageBlit.srcSubresource.mipLevel = i - 1;
 		imageBlit.srcOffsets[0] = { 0, 0, 0 };
-		imageBlit.srcOffsets[1] = { int(mipWidth), int(mipHeight), 1 };
+		imageBlit.srcOffsets[1] = { (int)mipWidth, (int)mipHeight, 1 };
 		
 		imageBlit.dstSubresource.mipLevel = i;
 		if(mipWidth > 1)
@@ -272,7 +272,7 @@ Texture::Texture(const TextureInfo& textureInfo)
 		if(mipHeight > 1)
 			mipHeight /= 2;
 		imageBlit.dstOffsets[0] = { 0, 0, 0 };
-		imageBlit.dstOffsets[1] = { int(mipWidth), int(mipHeight), 1 };
+		imageBlit.dstOffsets[1] = { (int)mipWidth, (int)mipHeight, 1 };
 
 		vkCmdBlitImage(textureManager.mCommandBuffer, mImage, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, mImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &imageBlit, VK_FILTER_LINEAR);
 	}
@@ -330,7 +330,7 @@ Texture::Texture(const TextureInfo& textureInfo)
 	samplerCreateInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
 	samplerCreateInfo.mipLodBias = 0.0f;
 	samplerCreateInfo.minLod = 0.0f;
-	samplerCreateInfo.maxLod = float(nMips);
+	samplerCreateInfo.maxLod = (float)nMips;
 	samplerCreateInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;;
 	samplerCreateInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
 	samplerCreateInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
@@ -417,7 +417,7 @@ Cubemap::Cubemap(CubemapInfo cubemapInfo)
 
 	const unsigned long long layerSize = unsigned long long(width) * height * formatInfo.nChannels * formatInfo.bytesPerChannel;
 	const VkDeviceSize imageSize = 6 * layerSize;
-	const unsigned int nMips = unsigned int(std::floor(std::log2(width > height ? width : height))) + 1;
+	const unsigned int nMips = (unsigned int)std::floor(std::log2(width > height ? width : height)) + 1;
 
 	assert(("[ERROR] Unsupported texture format", formatProperties.maxExtent.width >= width && formatProperties.maxExtent.height >= height && formatProperties.maxExtent.depth >= 1 && formatProperties.maxMipLevels >= 1 && formatProperties.maxArrayLayers >= 1 && formatProperties.sampleCounts & VK_SAMPLE_COUNT_1_BIT && formatProperties.maxResourceSize >= imageSize));
 
@@ -428,7 +428,7 @@ Cubemap::Cubemap(CubemapInfo cubemapInfo)
 	imageCreateInfo.flags = VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
 	imageCreateInfo.imageType = VK_IMAGE_TYPE_2D;
 	imageCreateInfo.format = cubemapInfo.format;
-	imageCreateInfo.extent = { unsigned int(width), unsigned int(height), 1 };
+	imageCreateInfo.extent = { (unsigned int)width, (unsigned int)height, 1 };
 	imageCreateInfo.mipLevels = nMips;
 	imageCreateInfo.arrayLayers = 6;
 	imageCreateInfo.samples = VK_SAMPLE_COUNT_1_BIT;
@@ -523,7 +523,7 @@ Cubemap::Cubemap(CubemapInfo cubemapInfo)
 	copyRegion.imageSubresource.baseArrayLayer = 0;
 	copyRegion.imageSubresource.layerCount = 6;
 	copyRegion.imageOffset = { 0, 0, 0 };
-	copyRegion.imageExtent = { unsigned int(width), unsigned int(height), 1 };
+	copyRegion.imageExtent = { (unsigned int)width, (unsigned int)height, 1 };
 	vkCmdCopyBufferToImage(textureManager.mCommandBuffer, stagingBuffer, mImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copyRegion);
 
 	barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
@@ -548,7 +548,7 @@ Cubemap::Cubemap(CubemapInfo cubemapInfo)
 
 		imageBlit.srcSubresource.mipLevel = i - 1;
 		imageBlit.srcOffsets[0] = { 0, 0, 0 };
-		imageBlit.srcOffsets[1] = { int(mipWidth), int(mipHeight), 1 };
+		imageBlit.srcOffsets[1] = { (int)mipWidth, (int)mipHeight, 1 };
 
 		imageBlit.dstSubresource.mipLevel = i;
 		if (mipWidth > 1)
@@ -556,7 +556,7 @@ Cubemap::Cubemap(CubemapInfo cubemapInfo)
 		if (mipHeight > 1)
 			mipHeight /= 2;
 		imageBlit.dstOffsets[0] = { 0, 0, 0 };
-		imageBlit.dstOffsets[1] = { int(mipWidth), int(mipHeight), 1 };
+		imageBlit.dstOffsets[1] = { (int)mipWidth, (int)mipHeight, 1 };
 
 		vkCmdBlitImage(textureManager.mCommandBuffer, mImage, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, mImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &imageBlit, VK_FILTER_LINEAR);
 	}
@@ -614,7 +614,7 @@ Cubemap::Cubemap(CubemapInfo cubemapInfo)
 	samplerCreateInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
 	samplerCreateInfo.mipLodBias = 0.0f;
 	samplerCreateInfo.minLod = 0.0f;
-	samplerCreateInfo.maxLod = float(nMips);
+	samplerCreateInfo.maxLod = (float)nMips;
 	samplerCreateInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;;
 	samplerCreateInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
 	samplerCreateInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
@@ -684,7 +684,7 @@ TextureManager::~TextureManager()
 Texture& TextureManager::getTexture(const TextureInfo& textureInfo)
 {
 	// Return texture in map if it already exists. Otherwise create a new texture, add it to the map, and return it
-	std::unordered_map<TextureInfo, Texture*>::iterator textureIterator = mTextures.find(textureInfo);
+	std::unordered_map<TextureInfo, Texture*, TextureInfoHasher>::iterator textureIterator = mTextures.find(textureInfo);
 	if (textureIterator != mTextures.end())
 		return *textureIterator->second;
 	Texture* newTexture = new Texture(textureInfo);
@@ -694,7 +694,7 @@ Texture& TextureManager::getTexture(const TextureInfo& textureInfo)
 
 Cubemap& TextureManager::getCubemap(const CubemapInfo& cubemapInfo)
 {
-	std::unordered_map<CubemapInfo, Cubemap*>::iterator cubemapIterator = mCubemaps.find(cubemapInfo);
+	std::unordered_map<CubemapInfo, Cubemap*, CubemapInfoHasher>::iterator cubemapIterator = mCubemaps.find(cubemapInfo);
 	if (cubemapIterator != mCubemaps.end())
 		return *cubemapIterator->second;
 	Cubemap* newCubemap = new Cubemap(cubemapInfo);

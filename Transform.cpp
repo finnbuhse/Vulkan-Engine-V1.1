@@ -92,13 +92,23 @@ void Transform::unsubscribeChangedEvent(const unsigned int& index)
 	changedCallbacks.remove(index);
 }
 
-TransformCreateInfo Transform::serializeInfo() const
+template<>
+std::vector<char> serialize(const Transform& transform)
 {
 	TransformCreateInfo serializeInfo;
-	serializeInfo.position = position;
-	serializeInfo.rotation = rotation;
-	serializeInfo.scale = scale;
-	return serializeInfo;
+	serializeInfo.position = transform.position;
+	serializeInfo.rotation = transform.rotation;
+	serializeInfo.scale = transform.scale;
+
+	return serialize(serializeInfo);
+}
+
+template<>
+void deserialize(const std::vector<char>& vecData, Transform& write)
+{
+	TransformCreateInfo createInfo;
+	deserialize(vecData, createInfo);
+	write = createInfo;
 }
 
 TransformSystem::TransformSystem()
