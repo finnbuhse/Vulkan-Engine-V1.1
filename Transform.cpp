@@ -108,7 +108,9 @@ void deserialize(const std::vector<char>& vecData, Transform& write)
 {
 	TransformCreateInfo createInfo;
 	deserialize(vecData, createInfo);
-	write = createInfo;
+	write.position = createInfo.position;
+	write.rotation = createInfo.rotation;
+	write.scale = createInfo.scale;
 }
 
 TransformSystem::TransformSystem()

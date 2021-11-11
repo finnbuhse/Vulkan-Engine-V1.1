@@ -39,16 +39,41 @@ void deserialize(const std::vector<char>& vecData, RigidBody& write)
 	physx::PxCollection* collection = physx::PxSerialization::createCollectionFromBinary(memory128, *physicsSystem.getSerializationRegistry());
 	collections.push_back(collection);
 
+	physicsSystem.getScene()->addCollection(*collection);
+
 	write.pxMesh = &collection->getObject(0);
 	write.pxRigidBody = (physx::PxRigidActor*)&collection->getObject(3);
+	collection->remove(*write.pxMesh);
+	collection->remove(*write.pxRigidBody);
 
-	physicsSystem.getScene()->addCollection(*collection);
+	if (write.pxRigidBody->getConcreteType() == physx::PxConcreteType::eRIGID_STATIC)
+		write.type = STATIC;
+	else
+	{
+		if (((physx::PxRigidDynamic*)write.pxRigidBody)->getRigidBodyFlags() & physx::PxRigidBodyFlag::eKINEMATIC)
+			write.type = KINEMATIC;
+		else
+			write.type = DYNAMIC;
+	}
 }
 
 void releaseDeserializedCollections()
 {
 	for (physx::PxCollection* collection : collections)
 	{
+		for (physx::PxU32 i = 0; i < collection->getNbObjects(); i++)
+		{
+			physx::PxBase& object = collection->getObject(i);
+			switch (object.getConcreteType())
+			{
+			case physx::PxConcreteType::eSHAPE:
+				static_cast<physx::PxShape&>(object).release();
+				break;
+			case physx::PxConcreteType::eMATERIAL:
+				static_cast<physx::PxMaterial&>(object).release();
+				break;
+			}
+		}
 		collection->release();
 	}
 }
@@ -182,7 +207,6 @@ void PhysicsSystem::componentAdded(const Entity& entity)
 	if ((entity.composition() & mRigidBodyComposition) == mRigidBodyComposition)
 	{
 		RigidBody& rigidBody = entity.getComponent<RigidBody>();
-		rigidBody.entity = &entity;
 
 		if (rigidBody.nVertices > 0)
 		{

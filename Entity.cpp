@@ -65,7 +65,7 @@ Composition& Entity::composition() const
 	return compositions[mID];
 }
 
-unsigned int Entity::numberOfComponents() const
+unsigned int Entity::nbComponents() const
 {
 	unsigned int nComponents = 0;
 	Composition composition = compositions[mID];
@@ -82,7 +82,7 @@ std::vector<char> serialize(const Entity& entity)
 {
 	std::vector<char> result;
 
-	std::vector<char> vecData = serialize(entity.numberOfComponents());
+	std::vector<char> vecData = serialize(entity.nbComponents());
 	result.insert(result.end(), vecData.begin(), vecData.end());
 
 	Composition entityComposition = entity.composition();
@@ -104,6 +104,7 @@ std::vector<char> serialize(const Entity& entity)
 	{
 		Transform& transform = entity.getComponent<Transform>();
 		vecData = serialize(transform.childrenIDs.length);
+		result.insert(result.end(), vecData.begin(), vecData.end());
 
 		for (unsigned int i = 0; i < transform.childrenIDs.length; i++)
 		{
@@ -122,7 +123,7 @@ std::vector<char> serialize(const Entity& entity)
 template <>
 void deserialize(const std::vector<char>& vecData, Entity& entity)
 {
-	static unsigned int begin = 0;
+	unsigned int begin = 0;
 	unsigned int size = sizeof(unsigned int);
 
 	unsigned int nComponents;
@@ -157,6 +158,4 @@ void deserialize(const std::vector<char>& vecData, Entity& entity)
 		Entity child;
 		deserialize(std::vector<char>(vecData.begin() + begin, vecData.end()), child);
 	}
-
-	begin = 0;
 }

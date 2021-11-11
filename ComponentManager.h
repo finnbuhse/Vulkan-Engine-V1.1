@@ -2,6 +2,9 @@
 #include "Entity.h"
 #include <functional>
 
+
+#include <iostream>
+
 typedef unsigned long long ComponentBit; // 1 bit-shifted by the component ID to indicate the position of flag bit in 'Composition' (See Entity.h)
 
 class ComponentManagerBase

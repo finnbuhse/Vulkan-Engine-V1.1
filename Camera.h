@@ -51,7 +51,7 @@ void deserialize(const std::vector<char>& vecData, Camera& write);
 class CameraSystem
 {
 private:
-	Composition mComposition; // Describes which components an entity must have to be added to the system
+	Composition mComposition; // Describes which components an entity must have to be included in the system
 	std::vector<EntityID> mEntityIDs; // The set of entities in the system
 
 	ComponentManager<Camera>& mCameraManager = ComponentManager<Camera>::instance();
@@ -63,8 +63,8 @@ public:
 	static CameraSystem& instance();
 	CameraSystem(const CameraSystem& copy) = delete;
 
-	/* Invoked everytime a component of interest to the system is added to an entity,
-	   but does not neccessarily mean the entity has the full required set of components,
+	/* Invoked after a component of interest to the system is added to an entity,
+	   does not neccessarily mean the entity has the full required set of components,
 	   so a check for this is performed and if the entity meets the criteria it is added to the system */
 	void componentAdded(const Entity& entity);
 
@@ -72,7 +72,7 @@ public:
 	   which will cause the entity to be removed from the system since it no longer meets the criteria */
 	void componentRemoved(const Entity& entity);
 
-	// Invoked everytime a transform whos entity also has a camera has changed
+	// Invoked when a transform whos entity also has a camera experiences a change
 	void transformChanged(Transform& transform) const;
 
 	// Invoked every frame

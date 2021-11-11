@@ -2,7 +2,7 @@
 #include <cstring>
 #include <cassert>
 
-// Basic POD dynamic array struct
+// POD dynamic array
 template <typename T>
 struct Vector
 {

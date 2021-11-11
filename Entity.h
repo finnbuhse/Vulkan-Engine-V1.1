@@ -72,7 +72,7 @@ public:
 		return (composition() & componentManager.bit) == componentManager.bit;
 	}
 
-	unsigned int numberOfComponents() const;
+	unsigned int nbComponents() const;
 };
 
 template <>

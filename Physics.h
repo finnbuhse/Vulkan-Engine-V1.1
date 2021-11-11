@@ -37,8 +37,6 @@ enum RigidBodyType { STATIC, DYNAMIC, KINEMATIC };
 
 struct RigidBody
 {
-	const Entity* entity;
-
 	RigidBodyType type;
 
 	glm::vec3* vertices;
