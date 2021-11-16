@@ -446,12 +446,23 @@ void PhysicsSystem::rightKey()
 	rightLerp.reverse();
 }
 
-physx::PxScene* PhysicsSystem::getScene()
+physx::PxRaycastBuffer PhysicsSystem::raycast(const glm::vec3& origin, const glm::vec3& direction, const float& distance, const RigidBodyType& filter)
 {
-	return scene;
-}
-
-physx::PxSerializationRegistry* PhysicsSystem::getSerializationRegistry()
-{
-	return serializationRegistry;
+	physx::PxQueryFilterData filterData = 0;
+	switch(filter)
+	{
+		case UNDEFINED:
+			filterData |= physx::PxQueryFlag::eSTATIC | physx::PxQueryFlag::eDYNAMIC;
+		case STATIC:
+			filterData |= physx::PxQueryFlag::eSTATIC;
+			break;
+		case KINEMATIC:
+		case DYNAMIC:
+			filterData |= physx::PxQueryFlag::eDYNAMIC;
+			break;
+	}
+	
+	physx::PxRaycastBuffer hit;
+	scene->raycast(physx::PxVec3(origin.x, origin.y, origin.z), physx::PxVec3(direction.x, direction.y, direction.z), distance, hit, physx::PxHitFlag::eDEFAULT, filterData);
+	return hit;
 }
