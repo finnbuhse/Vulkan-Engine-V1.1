@@ -53,8 +53,6 @@ struct RigidBody
 
 	physx::PxBase* pxMesh;
 	physx::PxRigidActor* pxRigidBody;
-
-	RigidBody serializeInfo() const { return *this; }
 };
 
 template <>
@@ -186,9 +184,6 @@ struct CharacterControllerCreateInfo
 class PhysicsSystem
 {
 private:
-	/*
-	friend void deserialize(const std::vector<char>& vecData, RigidBody& write); Doesn't work */
-
 	std::unordered_map<PxMaterialInfo, physx::PxMaterial*, PxMaterialInfoHasher> mMaterials;
 
 	std::vector<EntityID> mStaticEntityIDs;
@@ -245,7 +240,6 @@ public:
 	void backKey();
 	void leftKey();
 	void rightKey();
-
-	physx::PxScene* getScene();
-	physx::PxSerializationRegistry* getSerializationRegistry();
+	
+	physx::PxRaycastBuffer raycast(const glm::vec3& origin, const glm::vec3& direction, const float& distance);
 };
