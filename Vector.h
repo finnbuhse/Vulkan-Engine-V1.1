@@ -7,7 +7,7 @@ template <typename T>
 struct Vector
 {
 	T* data;
-	unsigned int size; // Size of data allocated in bytes
+	unsigned int size; // Size of allocated space in bytes
 	unsigned int length; // Number of elements
 
 	void initialize(const unsigned int& nElements = 0)
@@ -20,6 +20,7 @@ struct Vector
 	void free()
 	{
 		delete[] data;
+		data = nullptr;
 	}
 
 	void push(const T& element) 

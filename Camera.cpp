@@ -14,26 +14,24 @@ CameraCreateInfo::operator Camera() const
 	return camera;
 }
 
-unsigned int Camera::subscribeProjectionChangedEvent(const std::function<void(const Camera&)>& callback)
+void Camera::subscribeProjectionChangedEvent(const std::function<void(const Camera&)>* callback)
 {
-	projectionChangedCallbacks.push(callback);
-	return projectionChangedCallbacks.length - 1;
+	projectionChangedCallbacks.push((std::function<void(const Camera&)>*)callback);
 }
 
-void Camera::unsubscribeProjectionChangedEvent(const unsigned int& index)
+void Camera::unsubscribeProjectionChangedEvent(const std::function<void(const Camera&)>* callback)
 {
-	projectionChangedCallbacks.remove(index);
+	projectionChangedCallbacks.remove(projectionChangedCallbacks.find((std::function<void(const Camera&)>*)callback));
 }
 
-unsigned int Camera::subscribeViewChangedEvent(const std::function<void(const Transform&, const Camera&)>& callback)
+void Camera::subscribeViewChangedEvent(const std::function<void(const Transform&, const Camera&)>* callback)
 {
-	viewChangedCallbacks.push(callback);
-	return viewChangedCallbacks.length - 1;
+	viewChangedCallbacks.push((std::function<void(const Transform&, const Camera&)>*)callback);
 }
 
-void Camera::unsubscribeViewChangedEvent(const unsigned int& index)
+void Camera::unsubscribeViewChangedEvent(const std::function<void(const Transform&, const Camera&)>* callback)
 {
-	viewChangedCallbacks.remove(index);
+	viewChangedCallbacks.remove(viewChangedCallbacks.find((std::function<void(const Transform&, const Camera&)>*)callback));
 }
 
 template<>
@@ -83,7 +81,7 @@ void CameraSystem::componentAdded(const Entity& entity)
 		// Construct camera
 		camera.projectionChangedCallbacks.initialize();
 		camera.viewChangedCallbacks.initialize();
-		camera.transformChangedCallbackIndex = entity.getComponent<Transform>().subscribeChangedEvent(std::bind(&CameraSystem::transformChanged, this, std::placeholders::_1));
+		entity.getComponent<Transform>().subscribeChangedEvent(&transformChangedCallback);
 
 		mEntityIDs.push_back(entity.ID()); // Add the entity to the system
 	}
@@ -100,8 +98,9 @@ void CameraSystem::componentRemoved(const Entity& entity)
 		camera.projectionChangedCallbacks.free();
 		camera.viewChangedCallbacks.free();
 
-		// Unsubscribe from the entity's transform change event
-		entity.getComponent<Transform>().unsubscribeChangedEvent(camera.transformChangedCallbackIndex);
+		Transform& transform = entity.getComponent<Transform>();
+		if(transform.changedCallbacks.data) // Incase the transform's data has already been freed
+			transform.unsubscribeChangedEvent(&transformChangedCallback);
 
 		mEntityIDs.erase(IDIterator); // Remove entity from the system
 	}
@@ -118,7 +117,7 @@ void CameraSystem::transformChanged(Transform& transform) const
 
 	// Invoke view changed callbacks
 	for (unsigned int i = 0; i < camera.viewChangedCallbacks.length; i++)
-		camera.viewChangedCallbacks[i](transform, camera);
+		(*camera.viewChangedCallbacks[i])(transform, camera);
 }
 
 void CameraSystem::update() const
@@ -140,7 +139,7 @@ void CameraSystem::update() const
 
 			// Invoke projection changed callbacks
 			for (unsigned int i = 0; i < camera.projectionChangedCallbacks.length; i++)
-				camera.projectionChangedCallbacks[i](camera);
+				(*camera.projectionChangedCallbacks[i])(camera);
 		}
 	}
 }

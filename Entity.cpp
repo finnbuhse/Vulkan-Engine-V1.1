@@ -4,7 +4,7 @@
 std::vector<EntityID> Entity::queuedIDs = { 1 };
 std::unordered_map<EntityID, Composition> Entity::compositions;
 
-Composition& Entity::compositionFromID(const EntityID& ID)
+Composition& Entity::getCompositionFromID(const EntityID& ID)
 {
 	return compositions[ID];
 }

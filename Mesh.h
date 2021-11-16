@@ -1,8 +1,5 @@
 #pragma once
-/* *NOTE* Camera.h includes the most detailed explanation of a component and system example */
-
 #include "Texture.h"
-#include "Vulkan.h"
 #include "Camera.h"
 
 struct Material
@@ -46,15 +43,13 @@ struct Mesh
 	VkDeviceMemory vertexStagingMemory;
 	Vertex* vertices;
 
-	// Index buffer stores indices
 	VkBuffer indexBuffer;
 	VkDeviceMemory indexMemory;
 	VkBuffer indexStagingBuffer;
 	VkDeviceMemory indexStagingMemory;
 	unsigned int* indices;
 
-	// Uniform buffer stores model and normal matrix
-	VkBuffer uniformBuffer;
+	VkBuffer uniformBuffer; // Stores model and normal matrices.
 	VkDeviceMemory uniformMemory;
 	VkBuffer uniformStagingBuffer;
 	VkDeviceMemory uniformStagingMemory;
@@ -62,16 +57,26 @@ struct Mesh
 
 	VkDescriptorSet descriptorSet;
 
-	unsigned int transformChangedCallbackIndex;
+	/*
+	Reallocates GPU and CPU side buffers to accommodate [nVertices] vertices and [nIndices] indices. Useful if you wish to change the number of vertices and/or indices.
+	Note: All data currently stored in the buffers is wiped.
+	*/
+	void reallocateBuffers();
 
-	void reallocateBuffers(); // Should be called if nVertices or nIndices are changed
-	void updateBuffers(); // Should be called if vertices or indices are changed
+	/*
+	Copies CPU side buffers to GPU side buffers. Call this procedure to make changes to the vertices or indices take effect.
+	*/
+	void updateBuffers();
 
-	void updateMaterial(); // Should be called if the material is changed
+	/*
+	Updates information regarding which textures to use for the mesh. Call this procedure to make changes to the material take effect.
+	*/
+	void updateMaterial();
 
+	/*
+	\return An array of positions for each vertex in the mesh.
+	*/
 	std::vector<glm::vec3> positions();
-
-	Mesh serializeInfo() const { return *this; } // Specific serialize/deserialize method used
 };
 
 template <>
@@ -80,19 +85,9 @@ std::vector<char> serialize(const Mesh& mesh);
 template <>
 void deserialize(const std::vector<char>& vecData, Mesh& write);
 
-struct DirectionalLight;
-
-struct DirectionalLightCreateInfo
-{
-	glm::vec3 colour;
-
-	operator DirectionalLight() const;
-};
-
 struct DirectionalLight
 {
-	// Uniform buffer stores colour and direction
-	VkBuffer uniformBuffer;
+	VkBuffer uniformBuffer; // Stores colour and direction
 	VkDeviceMemory uniformMemory;
 	VkBuffer uniformStagingBuffer;
 	VkDeviceMemory uniformStagingMemory;
@@ -102,10 +97,13 @@ struct DirectionalLight
 
 	glm::vec3 lastColour;
 	glm::vec3 colour;
+};
 
-	unsigned int transformChangedCallbackIndex;
+struct DirectionalLightCreateInfo
+{
+	glm::vec3 colour;
 
-	DirectionalLightCreateInfo serializeInfo() const;
+	operator DirectionalLight() const;
 };
 
 class RenderSystem
@@ -116,6 +114,11 @@ private:
 	friend class TextureManager;
 	friend class Texture;
 	friend class Cubemap;
+
+	const TransformChangedCallback mMeshTransformChangedCallback = std::bind(&RenderSystem::meshTransformChanged, this, std::placeholders::_1);
+	const TransformChangedCallback mDirectionalLightTransformChangedCallback = std::bind(&RenderSystem::directionalLightTransformChanged, this, std::placeholders::_1);
+	const std::function<void(const Camera&)> mProjectionChangedCallback = std::bind(&RenderSystem::cameraProjectionChanged, this, std::placeholders::_1);
+	const std::function<void(const Transform&, const Camera&)> mViewChangedCallback = std::bind(&RenderSystem::cameraViewChanged, this, std::placeholders::_1, std::placeholders::_2);
 
 	Composition mMeshComposition;
 	Composition mDirectionalLightComposition;
@@ -243,8 +246,6 @@ private:
 	#pragma endregion
 
 	EntityID mCamera = NULL;
-	unsigned int mCameraProjectionChangedCallbackIndex = 0;
-	unsigned int mCameraViewChangedCallbackIndex = 0;
 
 	RenderSystem();
 public:
@@ -271,10 +272,10 @@ public:
 	void directionalLightAdded(const Entity& entity);
 	void directionalLightRemoved(const Entity& entity);
 
-	void meshTransformChanged(Transform& transform);
+	void meshTransformChanged(Transform& transform) const;
 
 	void directionalLightChanged(const DirectionalLight& directionalLight);
-	void directionalLightTransformChanged(Transform& transform);
+	void directionalLightTransformChanged(Transform& transform) const;
 
 	void cameraProjectionChanged(const Camera& camera);
 	void cameraViewChanged(const Transform& transform, const Camera& camera);

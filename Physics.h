@@ -37,22 +37,26 @@ enum RigidBodyType { UNDEFINED, STATIC, DYNAMIC, KINEMATIC };
 
 struct RigidBody
 {
+	EntityID entityID;
+
 	RigidBodyType type;
 
 	glm::vec3* vertices;
 	unsigned int nVertices;
 
-	// Unused for rigid bodies with a convex mesh
+	// Unused for rigid bodies with a convex mesh.
 	unsigned int* indices;
 	unsigned int nIndices;
 
-	unsigned char nComputeVertices; // Unused for rigid bodies with a triangle mesh
+	unsigned char nComputeVertices; // Unused for rigid bodies with a triangle mesh.
 
 	PxMaterialInfo material;
-	float density; // Unused for static rigid bodies
+	float density; // Unused for static rigid bodies.
 
 	physx::PxBase* pxMesh;
 	physx::PxRigidActor* pxRigidBody;
+
+	RigidBody serializeInfo() const { return *this; }
 };
 
 template <>
@@ -65,13 +69,17 @@ void releaseDeserializedCollections();
 
 struct StaticRigidBodyCreateInfo
 {
-	glm::vec3* vertices;
+	/* Assign nullptr for null initialization. However it is assumed that pxRigidBody and pxMesh both point to real objects when the entity is freed.
+	Mostly used for deserialization.
+	*/
+	glm::vec3* vertices; 
+	
 	unsigned int nVertices;
 
-	unsigned int* indices;
-	unsigned int nIndices; // Assign 0 to use convex mesh, otherwise triangle mesh created with original vertices & indices
+	unsigned int* indices; // Value ignored if nIndices == 0.
+	unsigned int nIndices; // Assign 0 to use computed convex mesh, otherwise triangle mesh created with original vertices & indices.
 
-	unsigned char nComputeVertices; // Value ignored if nIndices != 0
+	unsigned char nComputeVertices; // Value ignored if nIndices != 0.
 
 	PxMaterialInfo material;
 
@@ -91,6 +99,9 @@ struct StaticRigidBodyCreateInfo
 
 struct DynamicRigidBodyCreateInfo
 {
+	/* Assign nullptr for null initialization. However it is assumed that pxRigidBody and pxMesh both point to real objects when the entity is freed.
+	Mostly used for deserialization.
+	*/
 	glm::vec3* vertices;
 	unsigned int nVertices;
 
@@ -184,6 +195,14 @@ struct CharacterControllerCreateInfo
 class PhysicsSystem
 {
 private:
+	template <typename T>
+	friend std::vector<char> serialize(const T& component);
+
+	template <typename T>
+	friend void deserialize(const std::vector<char>& vecData, T& write);
+
+	const TransformChangedCallback staticTransformChangedCallback = std::bind(&PhysicsSystem::staticTransformChanged, this, std::placeholders::_1);
+
 	std::unordered_map<PxMaterialInfo, physx::PxMaterial*, PxMaterialInfoHasher> mMaterials;
 
 	std::vector<EntityID> mStaticEntityIDs;
@@ -240,6 +259,8 @@ public:
 	void backKey();
 	void leftKey();
 	void rightKey();
-	
-	physx::PxRaycastBuffer raycast(const glm::vec3& origin, const glm::vec3& direction, const float& distance, const RigidBodyType& filter = UNDEFINED);
+
+	void staticTransformChanged(const Transform& transform) const;
+
+	physx::PxRaycastBuffer raycast(const glm::vec3& origin, const glm::vec3& direction, const float& distance, const RigidBodyType& filter = UNDEFINED) const;
 };

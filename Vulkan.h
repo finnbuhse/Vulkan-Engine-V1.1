@@ -5,7 +5,7 @@
 #include <cstring>
 #include <cassert>
 
-#define N_DEVICE_FEATURES 55
+#define N_VK_DEVICE_FEATURES 55
 
 #ifdef NDEBUG
 #define validateResult(result)

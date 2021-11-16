@@ -4,8 +4,8 @@
 #include "assimp/scene.h"
 #include "assimp/postprocess.h"
 #include "assimp/material.h"
-#include <iostream>
 #include <stdlib.h>
+#include <iostream>
 
 #define IRRADIANCE_WIDTH_HEIGHT 64
 #define PREFILTER_WIDTH_HEIGHT 1080
@@ -31,14 +31,14 @@ MaterialCreateInfo::operator Material() const
 
 void Mesh::reallocateBuffers()
 {
-	RenderSystem& renderSystem = RenderSystem::instance();
+	static RenderSystem& renderSystem = RenderSystem::instance();
 
 	renderSystem.createMeshBuffers(*this);
 }
 
 void Mesh::updateBuffers()
 {
-	RenderSystem& renderSystem = RenderSystem::instance();
+	static RenderSystem& renderSystem = RenderSystem::instance();
 
 	#pragma region Copy staging buffers to device local buffers
 	VkCommandBufferBeginInfo commandBufferBeginInfo = {};
@@ -308,13 +308,6 @@ DirectionalLightCreateInfo::operator DirectionalLight() const
 	return light;
 }
 
-DirectionalLightCreateInfo DirectionalLight::serializeInfo() const
-{
-	DirectionalLightCreateInfo serializeInfo;
-	serializeInfo.colour = colour;
-	return serializeInfo;
-}
-
 RenderSystem::RenderSystem()
 {
 	mNPrefilterMips = (unsigned int)std::floor(std::log2(PREFILTER_WIDTH_HEIGHT)) + 1;
@@ -465,7 +458,7 @@ RenderSystem::RenderSystem()
 	VkBool32* requiredFeatures = reinterpret_cast<VkBool32*>(&deviceFeatures);
 	vkGetPhysicalDeviceFeatures(mPhysicalDevice, &mPhysicalDeviceFeatures);
 	VkBool32* availableFeatures = reinterpret_cast<VkBool32*>(&mPhysicalDeviceFeatures);
-	for (unsigned int i = 0; i < N_DEVICE_FEATURES; i++)
+	for (unsigned int i = 0; i < N_VK_DEVICE_FEATURES; i++)
 	{
 		if(requiredFeatures[i])
 			assert(("[ERROR] Physical device missing support for required feature", availableFeatures[i]));
@@ -707,6 +700,8 @@ RenderSystem::RenderSystem()
 	imageCreateInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
 	imageCreateInfo.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
 	imageCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+	imageCreateInfo.queueFamilyIndexCount = 0;
+	imageCreateInfo.pQueueFamilyIndices = nullptr;
 	imageCreateInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 	vkCreateImage(mDevice, &imageCreateInfo, nullptr, &mIrradianceImage);
 
@@ -919,6 +914,9 @@ RenderSystem::RenderSystem()
 	attachmentDescription.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 	attachmentDescription.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
+	colorReference.attachment = 0;
+	colorReference.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
 	VkSubpassDescription subpassDescription = {};
 	subpassDescription.flags = 0;
 	subpassDescription.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
@@ -987,7 +985,6 @@ RenderSystem::RenderSystem()
 	framebufferCreateInfo.renderPass = mEnvironmentRenderPass;
 	framebufferCreateInfo.layers = 6;
 	framebufferCreateInfo.attachmentCount = 1;
-
 	mPrefilterFramebuffers = new VkFramebuffer[mNPrefilterMips];
 	for (unsigned int i = 0; i < mNPrefilterMips; i++)
 	{
@@ -1970,7 +1967,7 @@ void RenderSystem::addMesh(const Entity& entity)
 		mesh.updateMaterial();
 
 	Transform& transform = entity.getComponent<Transform>();
-	mesh.transformChangedCallbackIndex = transform.subscribeChangedEvent(std::bind(&RenderSystem::meshTransformChanged, this, std::placeholders::_1));
+	transform.subscribeChangedEvent(&mMeshTransformChangedCallback);
 	meshTransformChanged(transform);
 
 	mMeshIDs.push_back(entity.ID());
@@ -1997,7 +1994,9 @@ void RenderSystem::removeMesh(const std::vector<EntityID>::iterator& IDIterator)
 	vkDestroyBuffer(mDevice, mesh.uniformStagingBuffer, nullptr);
 	vkFreeDescriptorSets(mDevice, mDescriptorPool, 1, &mesh.descriptorSet);
 
-	mTransformManager.getComponent(*IDIterator).unsubscribeChangedEvent(mesh.transformChangedCallbackIndex);
+	Transform& transform = mTransformManager.getComponent(*IDIterator);
+	if(transform.changedCallbacks.data) // Incase the transform's data has already been freed
+		transform.unsubscribeChangedEvent(&mMeshTransformChangedCallback);
 
 	mMeshIDs.erase(IDIterator);
 }
@@ -2078,7 +2077,7 @@ void RenderSystem::addDirectionalLight(const Entity& entity)
 	directionalLightChanged(directionalLight);
 
 	Transform& transform = entity.getComponent<Transform>();
-	directionalLight.transformChangedCallbackIndex = transform.subscribeChangedEvent(std::bind(&RenderSystem::directionalLightTransformChanged, this, std::placeholders::_1));
+	transform.subscribeChangedEvent(&mDirectionalLightTransformChangedCallback);
 	directionalLightTransformChanged(transform);
 
 	mDirectionalLightIDs.push_back(entity.ID());
@@ -2095,7 +2094,9 @@ void RenderSystem::removeDirectionalLight(const std::vector<EntityID>::iterator&
 	vkDestroyBuffer(mDevice, directionalLight.uniformStagingBuffer, nullptr);
 	vkFreeDescriptorSets(mDevice, mDescriptorPool, 1, &directionalLight.descriptorSet);
 
-	mTransformManager.getComponent(*IDIterator).unsubscribeChangedEvent(directionalLight.transformChangedCallbackIndex);
+	Transform& transform = mTransformManager.getComponent(*IDIterator);
+	if(transform.changedCallbacks.data) // Incase the transform's data has already been freed
+		transform.unsubscribeChangedEvent(&mDirectionalLightTransformChangedCallback);
 
 	mDirectionalLightIDs.erase(IDIterator);
 }
@@ -2214,7 +2215,7 @@ void RenderSystem::directionalLightRemoved(const Entity& entity)
 		removeDirectionalLight(IDIterator);
 }
 
-void RenderSystem::meshTransformChanged(Transform& transform)
+void RenderSystem::meshTransformChanged(Transform& transform) const
 {
 	Mesh& mesh = mMeshManager.getComponent(transform.entityID);
 	memcpy(mesh.uniformData, &transform.matrix, sizeof(glm::mat4));
@@ -2291,7 +2292,7 @@ void RenderSystem::directionalLightChanged(const DirectionalLight& directionalLi
 	#pragma endregion
 }
 
-void RenderSystem::directionalLightTransformChanged(Transform& transform)
+void RenderSystem::directionalLightTransformChanged(Transform& transform) const
 {
 	DirectionalLight& directionalLight = mDirectionalLightManager.getComponent(transform.entityID);
 	glm::vec3 direction = transform.worldDirection();
@@ -2400,12 +2401,12 @@ void RenderSystem::setCamera(const Entity& entity)
 	if (mCamera)
 	{
 		Camera& camera = mCameraManager.getComponent(mCamera);
-		camera.unsubscribeProjectionChangedEvent(mCameraProjectionChangedCallbackIndex);
-		camera.unsubscribeViewChangedEvent(mCameraViewChangedCallbackIndex);
+		camera.unsubscribeProjectionChangedEvent(&mProjectionChangedCallback);
+		camera.unsubscribeViewChangedEvent(&mViewChangedCallback);
 	}
 	Camera& camera = entity.getComponent<Camera>();
-	camera.subscribeProjectionChangedEvent(std::bind(&RenderSystem::cameraProjectionChanged, this, std::placeholders::_1));
-	camera.subscribeViewChangedEvent(std::bind(&RenderSystem::cameraViewChanged, this, std::placeholders::_1, std::placeholders::_2));
+	camera.subscribeProjectionChangedEvent(&mProjectionChangedCallback);
+	camera.subscribeViewChangedEvent(&mViewChangedCallback);
 	cameraProjectionChanged(camera);
 	cameraViewChanged(entity.getComponent<Transform>(), camera);
 	mCamera = entity.ID();

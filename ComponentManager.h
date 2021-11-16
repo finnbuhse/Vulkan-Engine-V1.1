@@ -2,18 +2,13 @@
 #include "Entity.h"
 #include <functional>
 
-
-#include <iostream>
-
-typedef unsigned long long ComponentBit; // 1 bit-shifted by the component ID to indicate the position of flag bit in 'Composition' (See Entity.h)
+typedef unsigned long long ComponentBit;
 
 class ComponentManagerBase
 {
 private:
-	// Incremented on each component manager instantiation, they will not be destroyed until the program terminates because they are singletons
 	static ComponentID queuedID;
 
-	// Maps each component ID to polymorphic pointers referencing a corresponding manager instance
 	static std::unordered_map<ComponentID, ComponentManagerBase*> IDInstanceMap;
 
 protected:
@@ -22,50 +17,58 @@ protected:
 public:
 	static ComponentManagerBase& componentManagerFromID(const ComponentID& ID);
 
-	const ComponentID ID;
-	const ComponentBit bit;
+	const ComponentID ID; // The unique ID identifying the managers component type.
+	const ComponentBit bit; // The position of the bit in a Composition bitmask indicating possession of the component type.
 	
 	~ComponentManagerBase();
 	
+	/*
+	Removes component from an entity. If invoked through pointer or reference they must point to a ComponentManager of some type T.
+	\param The entity to remove the component from.
+	*/
 	virtual void removeComponent(const Entity& entity) = 0;
 
 	virtual std::vector<char> getSerializedComponent(const EntityID& ID) = 0;
 	virtual void addSerializedComponent(const std::vector<char>& vecData, Entity& entity) = 0;
 };
 
-// There is one ComponentManager instance managing the storage of each type of Component, attatched to entities
+
 template <typename T>
 class ComponentManager : public ComponentManagerBase
 {
 private:
-	// Maps all entities possessing the component type to indexes into the contiguous array 'mComponents' hopefully reducing cache misses when iterating over entities
 	std::unordered_map<EntityID, unsigned int> mEntityIndexMap;
 	std::vector<T> mComponents;
 
-	// Component manager is responsible for notifying all Systems among other things if its respective component type is being added or removed to/from an entity
 	std::vector<std::function<void(const Entity&)>> mComponentAddedCallbacks;
 	std::vector<std::function<void(const Entity&)>> mComponentRemovedCallbacks;
 
 	ComponentManager() {};
 
 public:
-	// Only one instance of each ComponentManager should exist
 	static ComponentManager& instance() 
 	{
 		static ComponentManager instance;
 		return instance;
 	}
+
 	ComponentManager(const ComponentManager& copy) = delete;
 
+	/*
+	Adds a component of type T to the entity.
+	\param entity: The entity to add the component to.
+	\param component: The component to add.
+	\return A reference to the newly added component.
+	*/
 	T& addComponent(const Entity& entity, T component)
 	{
 		assert(("[ERROR] Cannot add component to entity that already possesses a component of that type", mEntityIndexMap.find(entity.ID()) == mEntityIndexMap.end()));
-		mEntityIndexMap.insert({ entity.ID(), mComponents.size() }); // Entity ID now maps to next available index
-		mComponents.push_back(component); // Add component at index
+		mEntityIndexMap.insert({ entity.ID(), mComponents.size() }); // Entity ID now relates to the next free index for the component.
+		mComponents.push_back(component); // Add component at index.
 
-		entity.composition() |= bit; // Add component's bit to entity's composition
+		entity.composition() |= bit; // Add component's bit to entity's composition.
 
-		// Notify subscribers of 'component added' event
+		// Notify subscribers of 'component added' event.
 		for (const std::function<void(const Entity&)>& callback : mComponentAddedCallbacks)
 			callback(entity);
 
@@ -85,16 +88,17 @@ public:
 
 	void removeComponent(const Entity& entity) override
 	{
+		// Find entity in entity index map.
 		std::unordered_map<EntityID, unsigned int>::iterator IDIterator = mEntityIndexMap.find(entity.ID());
 		assert(("[ERROR] Cannot remove component from an entity that does not possess a component of that type", IDIterator != mEntityIndexMap.end()));
 
-		// Notify subscribers of 'component removed' event
+		// Notify subscribers of 'component removed' event.
 		for (const std::function<void(const Entity&)>& callback : mComponentRemovedCallbacks)
 			callback(entity);
 
-		entity.composition() &= ~bit; // Remove component's bit from entity's composition
+		entity.composition() &= ~bit; // Remove component's bit from entity's composition.
 		
-		// Find mapping with it's index accessing the last element in 'mComponents' and change the index to now be the index of the component being removed
+		// Find relation where it's index accesses the last element in 'mComponents', and assign the index to be the index of the component being removed.
 		for (std::unordered_map<EntityID, unsigned int>::iterator it = mEntityIndexMap.begin(); it != mEntityIndexMap.end(); it++)
 		{
 			if (it->second == mComponents.size() - 1)
@@ -103,11 +107,10 @@ public:
 				break;
 			}
 		}
+		mComponents[IDIterator->second] = mComponents.back(); // Overwrite component being removed with last component. This ensures no gaps.
 
-		// No gaps
-		mComponents[IDIterator->second] = mComponents.back(); // Overwrite component being removed with last component
-		mComponents.pop_back(); // Free last component
-		mEntityIndexMap.erase(IDIterator); // Remove entity's ID mapping
+		mComponents.pop_back(); // Free last component.
+		mEntityIndexMap.erase(IDIterator); // Remove entity's ID mapping.
 	}
 
 	std::vector<char> getSerializedComponent(const EntityID& ID) override
@@ -122,7 +125,10 @@ public:
 		deserialize(vecData, component);
 	}
 
-	// Interface with component added and removed callback arrays
+	/*
+	Add a procedure to get automatically invoked whenever a component of type T is added to an entity.
+	\param callback: Pointer to the procedure to be added. Procedure must follow template: void [procedure name](const Entity& [entity name]).
+	*/
 	std::vector<std::function<void(const Entity& entity)>>::iterator subscribeAddEvent(const std::function<void(const Entity&)>& callback)
 	{
 		mComponentAddedCallbacks.push_back(callback);

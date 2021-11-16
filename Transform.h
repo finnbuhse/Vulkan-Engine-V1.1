@@ -9,23 +9,17 @@ void printMat4(const glm::mat4& matrix);
 
 struct Transform;
 
-struct TransformCreateInfo
-{
-	glm::vec3 position = glm::vec3(0.0f);
-	glm::quat rotation = glm::vec3(0.0f);
-	glm::vec3 scale = glm::vec3(1.0f);
-
-	operator Transform() const;
-};
+typedef std::function<void(Transform&)> TransformChangedCallback;
 
 struct Transform
-{   /* Dynamic array storing the IDs of the transform's children.
-	   IDs should NOT be directly appended and removed from the array but one should use addChild and removeChild */
+{   
+	/* Stores the IDs of the transform's children.
+	   IDs should NOT be directly appended and removed from the array but one should use the addChild and removeChild methods. */
 	Vector<EntityID> childrenIDs; 
 
 	/* Dynamic array of callbacks to invoke upon change.
 	   Callbacks should NOT be directly appended and removed from the array but one should use subscribeChangedEvent and unsubscribeChangedEvent */
-	Vector<std::function<void(Transform&)>> changedCallbacks;
+	Vector<TransformChangedCallback*> changedCallbacks;
 
 	EntityID entityID; // The transform's entity's ID
 	EntityID parentID; // The transform's parent's ID
@@ -62,8 +56,17 @@ struct Transform
 	void removeChild(const Entity& child);
 
 	// Interface with changedCallbacks
-	unsigned int subscribeChangedEvent(const std::function<void(Transform&)>& callback);
-	void unsubscribeChangedEvent(const unsigned int& index);
+	void subscribeChangedEvent(const TransformChangedCallback* callback);
+	void unsubscribeChangedEvent(const TransformChangedCallback* callback);
+};
+
+struct TransformCreateInfo
+{
+	glm::vec3 position = glm::vec3(0.0f);
+	glm::quat rotation = glm::vec3(0.0f);
+	glm::vec3 scale = glm::vec3(1.0f);
+
+	operator Transform() const;
 };
 
 template<>

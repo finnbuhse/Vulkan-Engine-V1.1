@@ -14,32 +14,43 @@ struct CameraCreateInfo
 
 struct Camera
 {
-	// Callbacks to be invoked when the camera's projection or view changes
-	Vector<std::function<void(const Camera&)>> projectionChangedCallbacks;
-	Vector<std::function<void(const Transform&, const Camera&)>> viewChangedCallbacks;
+	Vector<std::function<void(const Camera&)>*> projectionChangedCallbacks;
+	Vector<std::function<void(const Transform&, const Camera&)>*> viewChangedCallbacks;
 
 	glm::mat4 projectionMatrix;
 	glm::mat4 viewMatrix;
 
-	// Detect change via comparison with last frame
 	float lastFov;
 	float lastAspect;
 	float lastZNear, lastZFar;
 
-	// Can be assigned at runtime; the system will detect the change and take care of the adjustments
 	float fov;
 	float aspect;
 	float zNear, zFar;
 
-	/* A callback is appended to the transforms dynamic array of callbacks so the camera can respond when it's transform changes,
-	   the index of the callback in the array must be stored so it can be removed */
-	unsigned int transformChangedCallbackIndex;
+	/*
+	Add a procedure to get automatically invoked whenever the camera's projection changes.
+	\param callback: Pointer to the procedure to be added. Procedure must follow template: void [procedure name](const Camera& [camera name]).
+	*/
+	void subscribeProjectionChangedEvent(const std::function<void(const Camera&)>* callback);
 
-	// Interface with callback arrays
-	unsigned int subscribeProjectionChangedEvent(const std::function<void(const Camera&)>& callback);
-	void unsubscribeProjectionChangedEvent(const unsigned int& index);
-	unsigned int subscribeViewChangedEvent(const std::function<void(const Transform&, const Camera&)>& callback);
-	void unsubscribeViewChangedEvent(const unsigned int& index);
+	/*
+	Remove a procedure from the array of procedures that get invoked once the camera's projection changes.
+	\param callback: Pointer to the procedure to be removed. Procedure must follow template: void [procedure name](const Camera& [camera name]).
+	*/
+	void unsubscribeProjectionChangedEvent(const std::function<void(const Camera&)>* callback);
+
+	/*
+	Add a procedure to get automatically invoked whenever the camera's view (position or rotation) changes.
+	\param callback: Pointer to the procedure to be added. Procedure must follow template: void [procedure name](const Transform& [transform name], const Camera& [camera name]).
+	*/
+	void subscribeViewChangedEvent(const std::function<void(const Transform&, const Camera&)>* callback);
+
+	/*
+	Remove a procedure from the array of procedures that get invoked once the camera's view changes.
+	\param callback: Pointer to the procedure to be removed. Procedure must follow template: void [[procedure name](const Transform& [transform name], const Camera& [camera name]).
+	*/
+	void unsubscribeViewChangedEvent(const std::function<void(const Transform&, const Camera&)>* callback);
 };
 
 template<>
@@ -51,30 +62,37 @@ void deserialize(const std::vector<char>& vecData, Camera& write);
 class CameraSystem
 {
 private:
-	Composition mComposition; // Describes which components an entity must have to be included in the system
-	std::vector<EntityID> mEntityIDs; // The set of entities in the system
+	const TransformChangedCallback transformChangedCallback = std::bind(&CameraSystem::transformChanged, this, std::placeholders::_1);
+
+	Composition mComposition;
+	std::vector<EntityID> mEntityIDs;
 
 	ComponentManager<Camera>& mCameraManager = ComponentManager<Camera>::instance();
 
 	CameraSystem();
 
 public:
-	// Only one instance of each system should exist
 	static CameraSystem& instance();
+
 	CameraSystem(const CameraSystem& copy) = delete;
 
-	/* Invoked after a component of interest to the system is added to an entity,
-	   does not neccessarily mean the entity has the full required set of components,
-	   so a check for this is performed and if the entity meets the criteria it is added to the system */
+	/*
+	Invoked after a component of interest to the CameraSystem is added to an entity. Should not be used outside of it's internal use.
+	*/
 	void componentAdded(const Entity& entity);
 
-	/* Invoked before a component of interest to the system is removed from an entity, 
-	   which will cause the entity to be removed from the system since it no longer meets the criteria */
+	/*
+	Invoked before a component of interest to the CameraSystem is removed from an entity. Should not be used outside of it's internal use.
+	*/
 	void componentRemoved(const Entity& entity);
 
-	// Invoked when a transform whos entity also has a camera experiences a change
+	/*
+	Invoked when a 'Camera' entity's transform has changed. Should not be used outside of it's internal use.
+	*/
 	void transformChanged(Transform& transform) const;
 
-	// Invoked every frame
+	/*
+	Invoked every frame. Should not be used outside of it's internal use.
+	*/
 	void update() const;
 };

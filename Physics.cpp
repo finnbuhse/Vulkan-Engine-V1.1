@@ -4,7 +4,7 @@
 template <>
 std::vector<char> serialize(const RigidBody& rigidbody)
 {
-	static physx::PxSerializationRegistry* registry = PhysicsSystem::instance().getSerializationRegistry();
+	static physx::PxSerializationRegistry* registry = PhysicsSystem::instance().serializationRegistry;
 
 	std::vector<char> result;
 
@@ -32,14 +32,18 @@ void deserialize(const std::vector<char>& vecData, RigidBody& write)
 {
 	static PhysicsSystem& physicsSystem = PhysicsSystem::instance();
 
+	const Composition& composition = Entity::getCompositionFromID(write.entityID);
+	assert(((composition & physicsSystem.mRigidBodyComposition) == physicsSystem.mRigidBodyComposition, "[ERROR] Attempting to deserialize a rigid body attached to an entity which does not possess all the required components."));
+	assert((write.type == UNDEFINED, "[ERROR] Attempting to deserialize a rigid body which has already been initialized."));
+
 	void* memory = malloc(vecData.size() + PX_SERIAL_FILE_ALIGN);
 	void* memory128 = (void*)((size_t(memory) + PX_SERIAL_FILE_ALIGN) & ~(PX_SERIAL_FILE_ALIGN - 1));
 	memcpy(memory128, vecData.data(), vecData.size());
 
-	physx::PxCollection* collection = physx::PxSerialization::createCollectionFromBinary(memory128, *physicsSystem.getSerializationRegistry());
+	physx::PxCollection* collection = physx::PxSerialization::createCollectionFromBinary(memory128, *physicsSystem.serializationRegistry);
 	collections.push_back(collection);
 
-	physicsSystem.getScene()->addCollection(*collection);
+	physicsSystem.scene->addCollection(*collection);
 
 	write.pxMesh = &collection->getObject(0);
 	write.pxRigidBody = (physx::PxRigidActor*)&collection->getObject(3);
@@ -47,13 +51,19 @@ void deserialize(const std::vector<char>& vecData, RigidBody& write)
 	collection->remove(*write.pxRigidBody);
 
 	if (write.pxRigidBody->getConcreteType() == physx::PxConcreteType::eRIGID_STATIC)
+	{
 		write.type = STATIC;
+		physicsSystem.mTransformManager.getComponent(write.entityID).subscribeChangedEvent(&physicsSystem.staticTransformChangedCallback);
+		physicsSystem.mStaticEntityIDs.push_back(write.entityID);
+	}
 	else
 	{
+		
 		if (((physx::PxRigidDynamic*)write.pxRigidBody)->getRigidBodyFlags() & physx::PxRigidBodyFlag::eKINEMATIC)
 			write.type = KINEMATIC;
 		else
 			write.type = DYNAMIC;
+		physicsSystem.mDynamicEntityIDs.push_back(write.entityID);
 	}
 }
 
@@ -207,6 +217,7 @@ void PhysicsSystem::componentAdded(const Entity& entity)
 	if ((entity.composition() & mRigidBodyComposition) == mRigidBodyComposition)
 	{
 		RigidBody& rigidBody = entity.getComponent<RigidBody>();
+		rigidBody.entityID = entity.ID();
 
 		if (rigidBody.nVertices > 0)
 		{
@@ -264,12 +275,15 @@ void PhysicsSystem::componentAdded(const Entity& entity)
 			if (rigidBody.type == STATIC)
 			{
 				rigidBody.pxRigidBody = physx::PxCreateStatic(*physics, pxTransform, *geometry, *getMaterial(rigidBody.material));
+				rigidBody.pxRigidBody->userData = new unsigned int(entity.ID());
 				assert((rigidBody.pxRigidBody, "[ERROR PHYSX] Rigid body creation failed"));
+				entity.getComponent<Transform>().subscribeChangedEvent(&staticTransformChangedCallback);
 				mStaticEntityIDs.push_back(entity.ID());
 			}
 			else
 			{
 				rigidBody.pxRigidBody = physx::PxCreateDynamic(*physics, pxTransform, *geometry, *getMaterial(rigidBody.material), rigidBody.density);
+				rigidBody.pxRigidBody->userData = new unsigned int(entity.ID());
 				assert((rigidBody.pxRigidBody, "[ERROR PHYSX] Rigid body creation failed"));
 				if (rigidBody.type == KINEMATIC)
 					((physx::PxRigidDynamic*)rigidBody.pxRigidBody)->setRigidBodyFlag(physx::PxRigidBodyFlag::eKINEMATIC, true);
@@ -279,35 +293,34 @@ void PhysicsSystem::componentAdded(const Entity& entity)
 
 			delete geometry;
 		}
-		else // Null initialization allowed but it is assumed that pxRigidBody and pxMesh point to valid PxRigidActor and PxBase objects when the component is removed
+		else
 		{
+			rigidBody.type = UNDEFINED;
 			rigidBody.pxMesh = nullptr;
 			rigidBody.pxRigidBody = nullptr;
-			if (rigidBody.type == STATIC)
-				mStaticEntityIDs.push_back(entity.ID());
-			else
-				mDynamicEntityIDs.push_back(entity.ID());
 		}
 	}
 }
 
 void PhysicsSystem::componentRemoved(const Entity& entity)
 {
+	RigidBody& rigidBody = entity.getComponent<RigidBody>();
+	rigidBody.pxMesh->release();
+	delete rigidBody.pxRigidBody->userData;
+	rigidBody.pxRigidBody->release();
+
 	std::vector<EntityID>::iterator staticIDIterator = std::find(mStaticEntityIDs.begin(), mStaticEntityIDs.end(), entity.ID());
 	std::vector<EntityID>::iterator dynamicIDIterator = std::find(mDynamicEntityIDs.begin(), mDynamicEntityIDs.end(), entity.ID());
 
 	if (staticIDIterator != mStaticEntityIDs.end())
 	{
-		RigidBody& rigidBody = entity.getComponent<RigidBody>();
-		rigidBody.pxMesh->release();
-		rigidBody.pxRigidBody->release();
+		Transform& transform = entity.getComponent<Transform>();
+		if (transform.changedCallbacks.data)
+			transform.unsubscribeChangedEvent(&staticTransformChangedCallback);
 		mStaticEntityIDs.erase(staticIDIterator);
 	}
 	else if (dynamicIDIterator != mDynamicEntityIDs.end())
 	{
-		RigidBody& rigidBody = entity.getComponent<RigidBody>();
-		rigidBody.pxMesh->release();
-		rigidBody.pxRigidBody->release();
 		mDynamicEntityIDs.erase(dynamicIDIterator);
 	}
 }
@@ -383,13 +396,14 @@ void PhysicsSystem::update(const float& deltaTime)
 		Transform& transform = mTransformManager.getComponent(ID);
 		CharacterController& controller = mCharacterControllerManager.getComponent(ID);
 
+		// Yaw
 		transform.rotate(-cursorDelta.x * 0.005f, glm::vec3(0.0f, 1.0f, 0.0f));
 
-		physx::PxRaycastBuffer hit;
-		bool grounded = scene->raycast({ transform.position.x , transform.position.y - 0.5f * controller.height - controller.radius, transform.position.z }, { 0.0f, -1.0f, 0.0f }, 0.5f, hit, (physx::PxHitFlags)physx::PxHitFlag::eDEFAULT, physx::PxQueryFilterData(physx::PxQueryFlag::eSTATIC));
+		bool grounded = raycast(glm::vec3(transform.position.x, transform.position.y - 0.5 * controller.height - controller.radius, transform.position.z), glm::vec3(0.0f, -1.0f, 0.0f), 0.1f, UNDEFINED).hasBlock;
 
 		if (grounded)
 		{
+			// Calculate global move velocity
 			glm::vec3 xzVelocity(0.0f);
 			xzVelocity += transform.direction() * forwardLerp.sample();
 			xzVelocity += transform.direction(glm::vec3(0.0f, 0.0f, 1.0f)) * backLerp.sample();
@@ -446,22 +460,27 @@ void PhysicsSystem::rightKey()
 	rightLerp.reverse();
 }
 
-physx::PxRaycastBuffer PhysicsSystem::raycast(const glm::vec3& origin, const glm::vec3& direction, const float& distance, const RigidBodyType& filter)
+void PhysicsSystem::staticTransformChanged(const Transform& transform) const
 {
-	physx::PxQueryFilterData filterData = 0;
-	switch(filter)
+	mRigidBodyManager.getComponent(transform.entityID).pxRigidBody->setGlobalPose(physx::PxTransform(physx::PxVec3(transform.position.x, transform.position.y, transform.position.z), physx::PxQuat(transform.rotation.x, transform.rotation.y, transform.rotation.z, transform.rotation.w)));
+}
+
+physx::PxRaycastBuffer PhysicsSystem::raycast(const glm::vec3& origin, const glm::vec3& direction, const float& distance, const RigidBodyType& filter) const
+{
+	physx::PxQueryFilterData filterData(physx::PxQueryFlag::Enum(0));
+	switch (filter)
 	{
-		case UNDEFINED:
-			filterData |= physx::PxQueryFlag::eSTATIC | physx::PxQueryFlag::eDYNAMIC;
-		case STATIC:
-			filterData |= physx::PxQueryFlag::eSTATIC;
-			break;
-		case KINEMATIC:
-		case DYNAMIC:
-			filterData |= physx::PxQueryFlag::eDYNAMIC;
-			break;
+	case UNDEFINED:
+		filterData.flags |= physx::PxQueryFlag::eSTATIC | physx::PxQueryFlag::eDYNAMIC;
+	case STATIC:
+		filterData.flags |= physx::PxQueryFlag::eSTATIC;
+		break;
+	case KINEMATIC:
+	case DYNAMIC:
+		filterData.flags |= physx::PxQueryFlag::eDYNAMIC;
+		break;
 	}
-	
+
 	physx::PxRaycastBuffer hit;
 	scene->raycast(physx::PxVec3(origin.x, origin.y, origin.z), physx::PxVec3(direction.x, direction.y, direction.z), distance, hit, physx::PxHitFlag::eDEFAULT, filterData);
 	return hit;

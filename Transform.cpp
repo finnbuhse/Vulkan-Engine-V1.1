@@ -81,15 +81,14 @@ void Transform::removeChild(const Entity& child)
 	childrenIDs.remove(childrenIDs.find(child.ID())); // Remove child from children array
 }
 
-unsigned int Transform::subscribeChangedEvent(const std::function<void(Transform&)>& callback)
+void Transform::subscribeChangedEvent(const TransformChangedCallback* callback)
 {
-	changedCallbacks.push(callback);
-	return changedCallbacks.length - 1;
+	changedCallbacks.push((TransformChangedCallback*)callback);
 }
 
-void Transform::unsubscribeChangedEvent(const unsigned int& index)
+void Transform::unsubscribeChangedEvent(const TransformChangedCallback* callback)
 {
-	changedCallbacks.remove(index);
+	changedCallbacks.remove(changedCallbacks.find((TransformChangedCallback*)callback));
 }
 
 template<>
@@ -153,7 +152,7 @@ void TransformSystem::updateTransform(const EntityID& entityID) const
 
 			// Invoke changed callbacks
 			for (unsigned int i = 0; i < transform.changedCallbacks.length; i++)
-				transform.changedCallbacks[i](transform);
+				(*transform.changedCallbacks[i])(transform);
 
 			transform.lastPosition = transform.position;
 			transform.lastRotation = transform.rotation;
@@ -171,7 +170,7 @@ void TransformSystem::updateTransform(const EntityID& entityID) const
 			transform.worldScale = transform.scale;
 
 			for (unsigned int i = 0; i < transform.changedCallbacks.length; i++)
-				transform.changedCallbacks[i](transform);
+				(*transform.changedCallbacks[i])(transform);
 
 			transform.lastPosition = transform.position;
 			transform.lastRotation = transform.rotation;
