@@ -33,7 +33,7 @@ struct PxMaterialInfoHasher
 	};
 };
 
-enum RigidBodyType { STATIC, DYNAMIC, KINEMATIC };
+enum RigidBodyType { UNDEFINED, STATIC, DYNAMIC, KINEMATIC };
 
 struct RigidBody
 {
@@ -241,5 +241,5 @@ public:
 	void leftKey();
 	void rightKey();
 	
-	physx::PxRaycastBuffer raycast(const glm::vec3& origin, const glm::vec3& direction, const float& distance);
+	physx::PxRaycastBuffer raycast(const glm::vec3& origin, const glm::vec3& direction, const float& distance, const RigidBodyType& filter = UNDEFINED);
 };
