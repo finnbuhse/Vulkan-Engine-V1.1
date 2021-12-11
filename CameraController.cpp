@@ -3,24 +3,28 @@
 
 CameraControllerSystem::CameraControllerSystem()
 {
-	mLastCursorPosition = mWindowManager.cursorPosition();
-
-	ComponentManager<Camera>& cameraManager = ComponentManager<Camera>::instance();
+	mTransformManager.subscribeAddedEvent(&mComponentAddedCallback);
+	mTransformManager.subscribeRemovedEvent(&mComponentRemovedCallback);
+	mCameraControllerManager.subscribeAddedEvent(&mComponentAddedCallback);
+	mCameraControllerManager.subscribeRemovedEvent(&mComponentRemovedCallback);
 	
-	mComposition = mTransformManager.bit | cameraManager.bit | mCameraControllerManager.bit;
+	mComposition = mTransformManager.bit | mCameraControllerManager.bit;
 
-	mTransformManager.subscribeAddEvent(std::bind(&CameraControllerSystem::componentAdded, this, std::placeholders::_1));
-	mTransformManager.subscribeRemoveEvent(std::bind(&CameraControllerSystem::componentRemoved, this, std::placeholders::_1));
-	cameraManager.subscribeAddEvent(std::bind(&CameraControllerSystem::componentAdded, this, std::placeholders::_1));
-	cameraManager.subscribeRemoveEvent(std::bind(&CameraControllerSystem::componentRemoved, this, std::placeholders::_1));
-	mCameraControllerManager.subscribeAddEvent(std::bind(&CameraControllerSystem::componentAdded, this, std::placeholders::_1));
-	mCameraControllerManager.subscribeRemoveEvent(std::bind(&CameraControllerSystem::componentRemoved, this, std::placeholders::_1));
+	mLastCursorPosition = mWindowManager.cursorPosition();
 }
 
 CameraControllerSystem& CameraControllerSystem::instance()
 {
 	static CameraControllerSystem instance;
 	return instance;
+}
+
+CameraControllerSystem::~CameraControllerSystem()
+{
+	mTransformManager.unsubscribeAddedEvent(&mComponentAddedCallback);
+	mTransformManager.unsubscribeRemovedEvent(&mComponentRemovedCallback);
+	mCameraControllerManager.unsubscribeAddedEvent(&mComponentAddedCallback);
+	mCameraControllerManager.unsubscribeRemovedEvent(&mComponentRemovedCallback);
 }
 
 void CameraControllerSystem::componentAdded(const Entity& entity)
@@ -47,7 +51,7 @@ void CameraControllerSystem::update(const float& deltaTime)
 	glm::vec2 cursorDelta = cursorPosition - mLastCursorPosition;
 	mLastCursorPosition = cursorPosition;
 
-	// Input controls all CameraControllers in the scene
+	// Input controls all CameraControllers in the scene.
 	for (const EntityID& ID : mEntityIDs)
 	{
 		Transform& transform = mTransformManager.getComponent(ID);
@@ -65,8 +69,9 @@ void CameraControllerSystem::update(const float& deltaTime)
 				transform.translate(transform.worldDirection(glm::vec3(1.0f, 0.0f, 0.0f)) * cameraController.movementSpeed * deltaTime);
 		}
 
-		if(cameraController.pitch)
+		if (cameraController.pitch)
 			transform.rotate(-cursorDelta.y * cameraController.mouseSensitivity, transform.direction(glm::vec3(1.0f, 0.0f, 0.0f)));
+			
 		if(cameraController.yaw)
 			transform.rotate(-cursorDelta.x * cameraController.mouseSensitivity, glm::vec3(0.0f, 1.0f, 0.0f));
 	}
