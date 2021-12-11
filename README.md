@@ -22,3 +22,11 @@ Notes 16/11/2021:
 - Added character controllers with lerped velocity. The default keys are WASD and Space to jump, I am planning to make a settings system at which point the movement keys will become configurable. Use these in conjunction with a camera controller dedicated to pitch since yaw controls the entire character controller.
 - Added serialization of components and entities. The writeFile and readFile methods enable one to save serialized entities and load them from files.
 - Added raycast method to physics system.
+
+Notes 11/12/2021
+- Updated model loading.
+- Updated rigidbodies with applyForce, setTransform, setLinearVelocity, and getLinearVelocity methods.
+- Implemented serialization of rigid bodies.
+- Added Interactable and Interactor components to enable the ability to interact with entities.
+- Added GunItem component to implement/test Interactable component.
+- Added GunWeapon component.
