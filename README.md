@@ -21,4 +21,4 @@ Notes 16/11/2021:
 - Added rigidbodies in static, dynamic, and kinematic form.
 - Added character controllers with lerped velocity. The default keys are WASD and Space to jump, I am planning to make a settings system at which point the movement keys will become configurable. Use these in conjunction with a camera controller dedicated to pitch since the yaw controls the entire character controller.
 - Added serialization of components and entities. The writeFile and readFile methods enable one to save serialized entities and load them from files.
-- Added extremely powerful 'raycast' method to physics system.
+- Added raycast method to physics system.
