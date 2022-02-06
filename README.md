@@ -30,3 +30,9 @@ Notes 11/12/2021
 - Added Interactable and Interactor components to enable the ability to interact with entities.
 - Added GunItem component to implement/test Interactable component.
 - Added GunWeapon component.
+
+Notes 06/02/2022
+- Added scene manager to allow for automatic garbage collection of entities and scene loading.
+- Added mouse button press events to window manager.
+- Updated GunWeapon to shoot projectiles.
+- Fixed incorrect world position values for transforms.
