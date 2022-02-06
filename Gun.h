@@ -25,6 +25,8 @@ struct GunWeapon
 	std::string* bulletFilename;
 	Vector<char> serializedBullet;
 
+	Vector<EntityID> bullets;
+
 	void initialize(const char* itemFilename, const char* bulletFilename);
 };
 
@@ -39,6 +41,11 @@ std::vector<char> serialize(const GunWeapon& gunWeapon);
 
 template <>
 void deserialize(const std::vector<char>& vecData, GunWeapon& gunWeapon);
+
+struct Bullet
+{
+	glm::vec3 fireForce;
+};
 
 class GunSystem
 {
@@ -57,6 +64,7 @@ private:
 	const ComponentRemovedCallback mWeaponComponentRemovedCallback = std::bind(&GunSystem::weaponComponentRemoved, this, std::placeholders::_1);
 	const InteractCallback mInteractCallback = std::bind(&GunSystem::interact, this, std::placeholders::_1);
 	const KeyCallback mThrowCallback = std::bind(&GunSystem::throwEquipedGun, this);
+	const KeyCallback mShootCallback = std::bind(&GunSystem::shoot, this);
 
 	Composition mGunItemComposition;
 	Composition mGunWeaponComposition;

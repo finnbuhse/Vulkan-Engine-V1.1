@@ -1,4 +1,5 @@
 #include "Gun.h"
+#include "SceneManager.h"
 
 void GunItem::initialize(const char* weaponFilename)
 {
@@ -161,6 +162,7 @@ GunSystem::GunSystem()
 	mGunWeaponComposition = mTransformManager.bit | mGunWeaponManager.bit;
 
 	mWindowManager.subscribeKeyPressEvent(F, &mThrowCallback);
+	mWindowManager.subscribeMouseButtonEvent(&mShootCallback);
 }
 
 GunSystem::~GunSystem()
@@ -180,6 +182,7 @@ GunSystem::~GunSystem()
 	mGunWeaponManager.unsubscribeRemovedEvent(&mWeaponComponentRemovedCallback);
 
 	mWindowManager.unsubscribeKeyPressEvent(F, &mThrowCallback);
+	mWindowManager.unsubscribeMouseButtonEvent(&mShootCallback);
 }
 
 void GunSystem::componentAdded(const Entity& entity)
@@ -220,19 +223,30 @@ void GunSystem::weaponComponentAdded(const Entity& entity)
 
 		gunWeapon.bulletFilename = new std::string();
 		gunWeapon.serializedBullet.initialize();
+
+		gunWeapon.bullets.initialize();
 	}
 }
 
 void GunSystem::weaponComponentRemoved(const Entity& entity)
 {
+	static SceneManager& sceneManager = SceneManager::instance();
 	if ((entity.composition() & mGunWeaponComposition) == mGunWeaponComposition)
 	{
 		GunWeapon& gunWeapon = mGunWeaponManager.getComponent(mEquipedGun);
 		delete gunWeapon.gunItemFilename;
 		gunWeapon.serializedGunItem.free();
-
 		delete gunWeapon.bulletFilename;
+
 		gunWeapon.serializedBullet.free();
+
+		for (unsigned int i = 0; i < gunWeapon.bullets.length; i++)
+		{
+			Entity bullet(gunWeapon.bullets[i]);
+			destroyChildren(bullet);
+			bullet.destroy();
+		}
+		gunWeapon.bullets.free();
 
 		mEquipedGun = NULL;
 	}
@@ -240,10 +254,13 @@ void GunSystem::weaponComponentRemoved(const Entity& entity)
 
 void GunSystem::interact(const Entity& entity)
 {
+	static SceneManager& sceneManager = SceneManager::instance();
+
 	GunItem& gunItem = entity.getComponent<GunItem>();
 
 	Entity gunWeapon;
 	deserialize(std::vector<char>(gunItem.serializedGunWeapon.data, gunItem.serializedGunWeapon.data + gunItem.serializedGunWeapon.length), gunWeapon);
+	sceneManager.addEntity(gunWeapon);
 
 	Transform& transform = gunWeapon.getComponent<Transform>();
 	transform.position = gunItem.instantiatePosition;
@@ -252,12 +269,12 @@ void GunSystem::interact(const Entity& entity)
 
 	mTransformManager.getComponent(InteractSystem::instance().getInteractor()).addChild(gunWeapon);
 	
-	destroyChildren(entity);
-	entity.destroy();
+	sceneManager.destroyEntity(entity);
 }
 
 void GunSystem::throwEquipedGun()
 {
+	static SceneManager& sceneManager = SceneManager::instance();
 	if (mEquipedGun)
 	{
 		Entity gun(mEquipedGun);
@@ -265,6 +282,7 @@ void GunSystem::throwEquipedGun()
 
 		Entity gunItem;
 		deserialize(std::vector<char>(gunWeapon.serializedGunItem.data, gunWeapon.serializedGunItem.data + gunWeapon.serializedGunItem.length), gunItem);
+		sceneManager.addEntity(gunItem);
 
 		Transform& interactorTransform = mTransformManager.getComponent(InteractSystem::instance().getInteractor());
 
@@ -276,12 +294,26 @@ void GunSystem::throwEquipedGun()
 		Transform& transform = gunItem.getComponent<Transform>();
 		transform.scale = gunWeapon.instantiateScale;
 
-		destroyChildren(gun);
-		gun.destroy();
+		sceneManager.destroyEntity(gun);
 	}
 }
 
 void GunSystem::shoot()
 {
+	static SceneManager& sceneManager = SceneManager::instance();
+	if (mEquipedGun)
+	{
+		GunWeapon& gunWeapon = mGunWeaponManager.getComponent(mEquipedGun);
 
+		Entity bullet;
+		deserialize(std::vector<char>(gunWeapon.serializedBullet.data, gunWeapon.serializedBullet.data + gunWeapon.serializedBullet.length), bullet);
+		gunWeapon.bullets.push(bullet.ID());
+
+		RigidBody& rigidBody = bullet.getComponent<RigidBody>();
+		Transform& gunTransform = mTransformManager.getComponent(mEquipedGun);
+		Transform& headTransform = mTransformManager.getComponent(InteractSystem::instance().getInteractor());
+		rigidBody.setTransform(gunTransform.worldPosition + headTransform.worldRotation * gunWeapon.muzzlePosition, headTransform.worldRotation);
+
+		rigidBody.applyForce(headTransform.worldRotation * bullet.getComponent<Bullet>().fireForce);
+	}
 }
