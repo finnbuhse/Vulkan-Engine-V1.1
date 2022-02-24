@@ -38,3 +38,7 @@ For each of these libraries, you will need to add their include directories, and
 - Added mouse button press events to window manager.
 - Updated GunWeapon to shoot projectiles.
 - Fixed incorrect world position values for transforms.
+
+24/02/2022
+- Fixed cleaning of projectiles shot by GunWeapon.
+- Added UIText component to provide means for user interface.
