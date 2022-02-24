@@ -1,5 +1,6 @@
 #include "Mesh.h"
 #include "WindowManager.h"
+#include "FontManager.h"
 #include "assimp/Importer.hpp"
 #include "assimp/scene.h"
 #include "assimp/postprocess.h"
@@ -318,9 +319,11 @@ RenderSystem::RenderSystem()
 	mMeshManager.subscribeRemovedEvent(&mMeshRemovedCallback);
 	mDirectionalLightManager.subscribeAddedEvent(&mDirectionalLightAddedCallback);
 	mDirectionalLightManager.subscribeRemovedEvent(&mDirectionalLightRemovedCallback);
+	mUITextManager.subscribeAddedEvent(&mUITextAddedCallback);
+	mUITextManager.subscribeRemovedEvent(&mUITextRemovedCallback);
 
 	mMeshComposition = mTransformManager.bit | mMeshManager.bit;
-	mDirectionalLightComposition = mTransformManager.bit | mDirectionalLightManager.bit;
+	mDirectionalLightComposition = mTransformManager.bit | mDirectionalLightManager.bit; 
 
 	mNPrefilterMips = (unsigned int)std::floor(std::log2(PREFILTER_WIDTH_HEIGHT)) + 1;
 
@@ -337,6 +340,8 @@ RenderSystem::RenderSystem()
 	system("glslangValidator.exe -V ShaderSource/prefilter.frag -o prefilterFragment.spv");
 	system("glslangValidator.exe -V ShaderSource/skybox.vert -o skyboxVertex.spv");
 	system("glslangValidator.exe -V ShaderSource/skybox.frag -o skyboxFragment.spv");
+	system("glslangValidator.exe -V ShaderSource/uiText.vert -o uiTextVertex.spv");
+	system("glslangValidator.exe -V ShaderSource/uiText.frag -o uiTextFragment.spv");
 	std::cout << "Finished." << std::endl;
 
 	WindowManager& windowManager = WindowManager::instance();
@@ -596,7 +601,7 @@ RenderSystem::RenderSystem()
 		}
 	}
 
-    #if VSYNC
+    #if VSYNC == true
 	swapchainCreateInfo.presentMode = VK_PRESENT_MODE_FIFO_KHR;
 	#else
 	swapchainCreateInfo.presentMode = VK_PRESENT_MODE_IMMEDIATE_KHR;
@@ -856,7 +861,7 @@ RenderSystem::RenderSystem()
 	depthReference.attachment = 1;
 	depthReference.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 
-	VkSubpassDescription subpassDescriptions[2] = {};
+	VkSubpassDescription subpassDescriptions[3] = {};
 	subpassDescriptions[0].flags = 0;
 	subpassDescriptions[0].pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
 	subpassDescriptions[0].inputAttachmentCount = 0;
@@ -867,9 +872,9 @@ RenderSystem::RenderSystem()
 	subpassDescriptions[0].pDepthStencilAttachment = &depthReference;
 	subpassDescriptions[0].preserveAttachmentCount = 0;
 	subpassDescriptions[0].pPreserveAttachments = nullptr;
-	subpassDescriptions[1] = subpassDescriptions[0];
+	subpassDescriptions[2] = subpassDescriptions[1] = subpassDescriptions[0];
 
-	VkSubpassDependency subpassDependencies[2] = {};
+	VkSubpassDependency subpassDependencies[3] = {};
 	subpassDependencies[0].srcSubpass = VK_SUBPASS_EXTERNAL;
 	subpassDependencies[0].dstSubpass = 0;
 	subpassDependencies[0].srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
@@ -886,14 +891,22 @@ RenderSystem::RenderSystem()
 	subpassDependencies[1].dstAccessMask = 0;
 	subpassDependencies[1].dependencyFlags = 0;
 
+	subpassDependencies[2].srcSubpass = 1;
+	subpassDependencies[2].dstSubpass = 2;
+	subpassDependencies[2].srcStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+	subpassDependencies[2].dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+	subpassDependencies[2].srcAccessMask = 0;
+	subpassDependencies[2].dstAccessMask = 0;
+	subpassDependencies[2].dependencyFlags = 0;
+
 	VkRenderPassCreateInfo renderPassCreateInfo = {};
 	renderPassCreateInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
 	renderPassCreateInfo.pNext = nullptr;
 	renderPassCreateInfo.attachmentCount = 2;
 	renderPassCreateInfo.pAttachments = attachmentDescriptions;
-	renderPassCreateInfo.subpassCount = 2;
+	renderPassCreateInfo.subpassCount = 3;
 	renderPassCreateInfo.pSubpasses = subpassDescriptions;
-	renderPassCreateInfo.dependencyCount = 2;
+	renderPassCreateInfo.dependencyCount = 3;
 	renderPassCreateInfo.pDependencies = subpassDependencies;
 	vkCreateRenderPass(mDevice, &renderPassCreateInfo, nullptr, &mMainRenderPass);
 
@@ -1027,16 +1040,16 @@ RenderSystem::RenderSystem()
 	// Create descriptor pool
 	VkDescriptorPoolSize descriptorPoolSizes[2] = {};
 	descriptorPoolSizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-	descriptorPoolSizes[0].descriptorCount = 100;
+	descriptorPoolSizes[0].descriptorCount = 200;
 
 	descriptorPoolSizes[1].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-	descriptorPoolSizes[1].descriptorCount = 100;
+	descriptorPoolSizes[1].descriptorCount = 400;
 
 	VkDescriptorPoolCreateInfo descriptorPoolCreateInfo = {};
 	descriptorPoolCreateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
 	descriptorPoolCreateInfo.pNext = nullptr;
 	descriptorPoolCreateInfo.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
-	descriptorPoolCreateInfo.maxSets = 100;
+	descriptorPoolCreateInfo.maxSets = 500;
 	descriptorPoolCreateInfo.poolSizeCount = 2;
 	descriptorPoolCreateInfo.pPoolSizes = descriptorPoolSizes;
 	vkCreateDescriptorPool(mDevice, &descriptorPoolCreateInfo, nullptr, &mDescriptorPool);
@@ -1130,21 +1143,21 @@ RenderSystem::RenderSystem()
 	vkCreateDescriptorSetLayout(mDevice, &descriptorSetLayoutCreateInfo, nullptr, &mDirectionalLightingDescriptorSetLayouts[2]);
 
 	// Create layout 0 in 'mSkyboxPipeline'
-	VkDescriptorSetLayoutBinding skyboxDescriptorSetLayoutBindings[2] = {};
-	skyboxDescriptorSetLayoutBindings[0].binding = 0;
-	skyboxDescriptorSetLayoutBindings[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-	skyboxDescriptorSetLayoutBindings[0].descriptorCount = 1;
-	skyboxDescriptorSetLayoutBindings[0].stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-	skyboxDescriptorSetLayoutBindings[0].pImmutableSamplers = nullptr;
-
-	skyboxDescriptorSetLayoutBindings[1].binding = 1;
-	skyboxDescriptorSetLayoutBindings[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-	skyboxDescriptorSetLayoutBindings[1].descriptorCount = 1;
-	skyboxDescriptorSetLayoutBindings[1].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-	skyboxDescriptorSetLayoutBindings[1].pImmutableSamplers = nullptr;
+	VkDescriptorSetLayoutBinding descriptorSetLayoutBindings2[2] = {};
+	descriptorSetLayoutBindings2[0].binding = 0;
+	descriptorSetLayoutBindings2[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	descriptorSetLayoutBindings2[0].descriptorCount = 1;
+	descriptorSetLayoutBindings2[0].stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+	descriptorSetLayoutBindings2[0].pImmutableSamplers = nullptr;
+	   
+	descriptorSetLayoutBindings2[1].binding = 1;
+	descriptorSetLayoutBindings2[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	descriptorSetLayoutBindings2[1].descriptorCount = 1;
+	descriptorSetLayoutBindings2[1].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+	descriptorSetLayoutBindings2[1].pImmutableSamplers = nullptr;
 	
 	descriptorSetLayoutCreateInfo.bindingCount = 2;
-	descriptorSetLayoutCreateInfo.pBindings = skyboxDescriptorSetLayoutBindings;
+	descriptorSetLayoutCreateInfo.pBindings = descriptorSetLayoutBindings2;
 	vkCreateDescriptorSetLayout(mDevice, &descriptorSetLayoutCreateInfo, nullptr, &mSkyboxDescriptorSetLayout);
 
 	// Create layout 0 in 'mConvolutePipeline' and layout 0 in 'mPrefilterPipeline'
@@ -1156,6 +1169,17 @@ RenderSystem::RenderSystem()
 	descriptorSetLayoutCreateInfo.bindingCount = 1;
 	descriptorSetLayoutCreateInfo.pBindings = &descriptorSetLayoutBinding;
 	vkCreateDescriptorSetLayout(mDevice, &descriptorSetLayoutCreateInfo, nullptr, &mEnvironmentDescriptorSetLayout);
+
+	// Create layout 0 in 'mUITextPipeline'
+	descriptorSetLayoutBinding.binding = 0;
+	descriptorSetLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	descriptorSetLayoutBinding.descriptorCount = 1;
+	descriptorSetLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+	descriptorSetLayoutBinding.pImmutableSamplers = nullptr;
+
+	descriptorSetLayoutCreateInfo.bindingCount = 1;
+	descriptorSetLayoutCreateInfo.pBindings = &descriptorSetLayoutBinding;
+	vkCreateDescriptorSetLayout(mDevice, &descriptorSetLayoutCreateInfo, nullptr, &mUITextDescriptorSetLayout);
 
 	// Allocate descriptor sets
 	VkDescriptorSetLayout descriptorSetLayouts[3] = { mDirectionalLightingDescriptorSetLayouts[0], mSkyboxDescriptorSetLayout, mEnvironmentDescriptorSetLayout};
@@ -1280,6 +1304,16 @@ RenderSystem::RenderSystem()
 	shaderModuleCreateInfo.codeSize = shaderCode.size();
 	shaderModuleCreateInfo.pCode = reinterpret_cast<unsigned int*>(shaderCode.data());
 	vkCreateShaderModule(mDevice, &shaderModuleCreateInfo, nullptr, &mPrefilterFragmentShader);
+
+	shaderCode = readFile("uiTextVertex.spv");
+	shaderModuleCreateInfo.codeSize = shaderCode.size();
+	shaderModuleCreateInfo.pCode = reinterpret_cast<unsigned int*>(shaderCode.data());
+	vkCreateShaderModule(mDevice, &shaderModuleCreateInfo, nullptr, &mUITextVertexShader);
+
+	shaderCode = readFile("uiTextFragment.spv");
+	shaderModuleCreateInfo.codeSize = shaderCode.size();
+	shaderModuleCreateInfo.pCode = reinterpret_cast<unsigned int*>(shaderCode.data());
+	vkCreateShaderModule(mDevice, &shaderModuleCreateInfo, nullptr, &mUITextFragmentShader);
 	#pragma endregion
 
 	#pragma region Create pipelines
@@ -1306,26 +1340,26 @@ RenderSystem::RenderSystem()
 	vertexBindingDescription.stride = sizeof(Vertex);
 	vertexBindingDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
 
-	VkVertexInputAttributeDescription vertexAttributeDescriptions[4] = {};
-	vertexAttributeDescriptions[0].location = 0;
-	vertexAttributeDescriptions[0].binding = 0;
-	vertexAttributeDescriptions[0].format = VK_FORMAT_R32G32B32_SFLOAT;
-	vertexAttributeDescriptions[0].offset = 0;
-
-	vertexAttributeDescriptions[1].location = 1;
-	vertexAttributeDescriptions[1].binding = 0;
-	vertexAttributeDescriptions[1].format = VK_FORMAT_R32G32B32_SFLOAT;
-	vertexAttributeDescriptions[1].offset = sizeof(glm::vec3);
-
-	vertexAttributeDescriptions[2].location = 2;
-	vertexAttributeDescriptions[2].binding = 0;
-	vertexAttributeDescriptions[2].format = VK_FORMAT_R32G32B32_SFLOAT;
-	vertexAttributeDescriptions[2].offset = 2 * sizeof(glm::vec3);
-
-	vertexAttributeDescriptions[3].location = 3;
-	vertexAttributeDescriptions[3].binding = 0;
-	vertexAttributeDescriptions[3].format = VK_FORMAT_R32G32_SFLOAT;
-	vertexAttributeDescriptions[3].offset = 3 * sizeof(glm::vec3);
+	VkVertexInputAttributeDescription vertexAttributeDescriptions0[4] = {};
+	vertexAttributeDescriptions0[0].location = 0;
+	vertexAttributeDescriptions0[0].binding = 0;
+	vertexAttributeDescriptions0[0].format = VK_FORMAT_R32G32B32_SFLOAT;
+	vertexAttributeDescriptions0[0].offset = 0;
+							   
+	vertexAttributeDescriptions0[1].location = 1;
+	vertexAttributeDescriptions0[1].binding = 0;
+	vertexAttributeDescriptions0[1].format = VK_FORMAT_R32G32B32_SFLOAT;
+	vertexAttributeDescriptions0[1].offset = sizeof(glm::vec3);
+							   
+	vertexAttributeDescriptions0[2].location = 2;
+	vertexAttributeDescriptions0[2].binding = 0;
+	vertexAttributeDescriptions0[2].format = VK_FORMAT_R32G32B32_SFLOAT;
+	vertexAttributeDescriptions0[2].offset = 2 * sizeof(glm::vec3);
+							   
+	vertexAttributeDescriptions0[3].location = 3;
+	vertexAttributeDescriptions0[3].binding = 0;
+	vertexAttributeDescriptions0[3].format = VK_FORMAT_R32G32_SFLOAT;
+	vertexAttributeDescriptions0[3].offset = 3 * sizeof(glm::vec3);
 
 	VkPipelineVertexInputStateCreateInfo vertexInputState = {};
 	vertexInputState.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
@@ -1334,7 +1368,7 @@ RenderSystem::RenderSystem()
 	vertexInputState.vertexBindingDescriptionCount = 1;
 	vertexInputState.pVertexBindingDescriptions = &vertexBindingDescription;
 	vertexInputState.vertexAttributeDescriptionCount = 4;
-	vertexInputState.pVertexAttributeDescriptions = vertexAttributeDescriptions;
+	vertexInputState.pVertexAttributeDescriptions = vertexAttributeDescriptions0;
 
 	VkPipelineInputAssemblyStateCreateInfo inputAssemblyState = {};
 	inputAssemblyState.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
@@ -1596,7 +1630,7 @@ RenderSystem::RenderSystem()
 	pipelineLayoutCreateInfo.setLayoutCount = 1;
 	pipelineLayoutCreateInfo.pSetLayouts = &mEnvironmentDescriptorSetLayout;
 	pipelineLayoutCreateInfo.pushConstantRangeCount = 1;
-	VkPushConstantRange pushConstant = { VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(float) };
+	VkPushConstantRange pushConstant = { VK_SHADER_STAGE_FRAGMENT_BIT, 0, 4 };
 	pipelineLayoutCreateInfo.pPushConstantRanges = &pushConstant;
 	vkCreatePipelineLayout(mDevice, &pipelineLayoutCreateInfo, nullptr, &mPrefilterPipelineLayout);
 
@@ -1606,6 +1640,131 @@ RenderSystem::RenderSystem()
 	pipelineCreateInfo.renderPass = mEnvironmentRenderPass;
 	pipelineCreateInfo.subpass = 0;
 	vkCreateGraphicsPipelines(mDevice, VK_NULL_HANDLE, 1, &pipelineCreateInfo, nullptr, &mPrefilterPipeline);
+
+	// Create UI text pipeline
+	shaderStages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
+	shaderStages[0].module = mUITextVertexShader;
+	shaderStages[0].pName = "main";
+	shaderStages[0].pSpecializationInfo = nullptr;
+
+	shaderStages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+	shaderStages[1].module = mUITextFragmentShader;
+	shaderStages[1].pName = "main";
+	shaderStages[1].pSpecializationInfo = nullptr;
+
+	vertexBindingDescription.binding = 0;
+	vertexBindingDescription.stride = sizeof(glm::vec3) + sizeof(glm::vec2);
+	vertexBindingDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+
+	VkVertexInputAttributeDescription vertexAttributeDescriptions1[2] = {};
+	vertexAttributeDescriptions1[0].location = 0;
+	vertexAttributeDescriptions1[0].binding = 0;
+	vertexAttributeDescriptions1[0].format = VK_FORMAT_R32G32B32_SFLOAT;
+	vertexAttributeDescriptions1[0].offset = 0;
+							   
+	vertexAttributeDescriptions1[1].location = 1;
+	vertexAttributeDescriptions1[1].binding = 0;
+	vertexAttributeDescriptions1[1].format = VK_FORMAT_R32G32_SFLOAT;
+	vertexAttributeDescriptions1[1].offset = sizeof(glm::vec3);
+
+	vertexInputState.vertexBindingDescriptionCount = 1;
+	vertexInputState.pVertexBindingDescriptions = &vertexBindingDescription;
+	vertexInputState.vertexAttributeDescriptionCount = 2;
+	vertexInputState.pVertexAttributeDescriptions = vertexAttributeDescriptions1;
+
+	inputAssemblyState.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP;
+	inputAssemblyState.primitiveRestartEnable = VK_FALSE;
+
+	viewportState.viewportCount = 1;
+	viewportState.pViewports = nullptr;
+	viewportState.scissorCount = 1;
+	viewportState.pScissors = nullptr;
+
+	rasterizationState.depthClampEnable = VK_FALSE;
+	rasterizationState.depthBiasEnable = VK_FALSE;
+	rasterizationState.depthBiasClamp = 0;
+	rasterizationState.depthBiasConstantFactor = 0;
+	rasterizationState.depthBiasSlopeFactor = 0;
+	rasterizationState.rasterizerDiscardEnable = VK_FALSE;
+	rasterizationState.polygonMode = VK_POLYGON_MODE_FILL;
+	rasterizationState.cullMode = VK_CULL_MODE_BACK_BIT;
+	rasterizationState.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+	rasterizationState.lineWidth = 1.0f;
+
+	multisampleState.pSampleMask = nullptr;
+	multisampleState.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+	multisampleState.sampleShadingEnable = VK_FALSE;
+	multisampleState.minSampleShading = 0.0f;
+	multisampleState.alphaToCoverageEnable = VK_FALSE;
+	multisampleState.alphaToOneEnable = VK_FALSE;
+
+	depthStencilState.depthTestEnable = VK_TRUE;
+	depthStencilState.depthWriteEnable = VK_TRUE;
+	depthStencilState.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
+	depthStencilState.depthBoundsTestEnable = VK_FALSE;
+	depthStencilState.stencilTestEnable = VK_FALSE;
+	depthStencilState.front.failOp = VK_STENCIL_OP_KEEP;
+	depthStencilState.front.passOp = VK_STENCIL_OP_KEEP;
+	depthStencilState.front.depthFailOp = VK_STENCIL_OP_ZERO;
+	depthStencilState.front.compareOp = VK_COMPARE_OP_ALWAYS;
+	depthStencilState.front.compareMask = 0;
+	depthStencilState.front.writeMask = 0;
+	depthStencilState.front.reference = 0;
+	depthStencilState.back = depthStencilState.front;
+	depthStencilState.minDepthBounds = 0;
+	depthStencilState.maxDepthBounds = 0;
+
+	attachmentBlendState.blendEnable = VK_TRUE;
+	attachmentBlendState.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;;
+	attachmentBlendState.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+	attachmentBlendState.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+	attachmentBlendState.colorBlendOp = VK_BLEND_OP_ADD;
+	attachmentBlendState.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+	attachmentBlendState.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+	attachmentBlendState.alphaBlendOp = VK_BLEND_OP_ADD;
+
+	blendState.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+	blendState.pNext = nullptr;
+	blendState.flags = 0;
+	blendState.logicOpEnable = VK_FALSE;
+	blendState.logicOp = VK_LOGIC_OP_NO_OP;
+	blendState.attachmentCount = 1;
+	blendState.pAttachments = &attachmentBlendState;
+	blendState.blendConstants[0] = 1.0f;
+	blendState.blendConstants[1] = 1.0f;
+	blendState.blendConstants[2] = 1.0f;
+	blendState.blendConstants[3] = 1.0f;
+
+	dynamicState.dynamicStateCount = 2;
+	dynamicState.pDynamicStates = dynamicStates;
+
+	pipelineLayoutCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+	pipelineLayoutCreateInfo.pNext = nullptr;
+	pipelineLayoutCreateInfo.flags = 0;
+	pipelineLayoutCreateInfo.setLayoutCount = 1;
+	pipelineLayoutCreateInfo.pSetLayouts = &mUITextDescriptorSetLayout;
+	pipelineLayoutCreateInfo.pushConstantRangeCount = 2;
+	VkPushConstantRange pushConstants[2] = { { VK_SHADER_STAGE_VERTEX_BIT, 0, 16 }, { VK_SHADER_STAGE_FRAGMENT_BIT, 16, 28 } };
+	pipelineLayoutCreateInfo.pPushConstantRanges = pushConstants;
+	vkCreatePipelineLayout(mDevice, &pipelineLayoutCreateInfo, nullptr, &mUITextPipelineLayout);
+
+	pipelineCreateInfo.stageCount = 2;
+	pipelineCreateInfo.pStages = shaderStages;
+	pipelineCreateInfo.pVertexInputState = &vertexInputState;
+	pipelineCreateInfo.pInputAssemblyState = &inputAssemblyState;
+	pipelineCreateInfo.pTessellationState = nullptr;
+	pipelineCreateInfo.pViewportState = &viewportState;
+	pipelineCreateInfo.pRasterizationState = &rasterizationState;
+	pipelineCreateInfo.pMultisampleState = &multisampleState;
+	pipelineCreateInfo.pDepthStencilState = &depthStencilState;
+	pipelineCreateInfo.pColorBlendState = &blendState;
+	pipelineCreateInfo.pDynamicState = &dynamicState;
+	pipelineCreateInfo.layout = mUITextPipelineLayout;
+	pipelineCreateInfo.renderPass = mMainRenderPass;
+	pipelineCreateInfo.subpass = 2;
+	pipelineCreateInfo.basePipelineHandle = VK_NULL_HANDLE;
+	pipelineCreateInfo.basePipelineIndex = 0;
+	vkCreateGraphicsPipelines(mDevice, VK_NULL_HANDLE, 1, &pipelineCreateInfo, nullptr, &mUITextPipeline);
 	#pragma endregion
 
 	#pragma region Create command buffer
@@ -1726,6 +1885,71 @@ RenderSystem::RenderSystem()
 	VkSubmitInfo submitInfo = {};
 	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 	submitInfo.pNext = nullptr;
+	submitInfo.waitSemaphoreCount = 0;
+	submitInfo.pWaitSemaphores = nullptr;
+	submitInfo.pWaitDstStageMask = nullptr;
+	submitInfo.commandBufferCount = 1;
+	submitInfo.pCommandBuffers = &mCommandBuffer;
+	submitInfo.signalSemaphoreCount = 0;
+	submitInfo.pSignalSemaphores = nullptr;
+	vkQueueSubmit(mGraphicsQueue, 1, &submitInfo, VK_NULL_HANDLE);
+
+	vkQueueWaitIdle(mGraphicsQueue);
+	vkResetCommandBuffer(mCommandBuffer, 0);
+
+	vkFreeMemory(mDevice, stagingMemory, nullptr);
+	vkDestroyBuffer(mDevice, stagingBuffer, nullptr);
+	#pragma endregion
+
+	#pragma region Create UI Quad vertex buffer
+	// Create vertex buffer
+	float uiQuadVertices[] = {
+	0.0f, -1.0f, 0.0f,   0.0f, 0.0f,
+	0.0f, 0.0f, 0.0f,   0.0f, 1.0f,
+	1.0f, -1.0f, 0.0f,   1.0f, 0.0f,
+	1.0f, 0.0f, 0.0f,   1.0f, 1.0f
+	};
+
+	bufferRange = sizeof(uiQuadVertices);
+	bufferCreateInfo.size = bufferRange;
+	bufferCreateInfo.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+	vkCreateBuffer(mDevice, &bufferCreateInfo, nullptr, &mUIQuadVertexBuffer);
+
+	vkGetBufferMemoryRequirements(mDevice, mUIQuadVertexBuffer, &memoryRequirements);
+
+	memoryAllocateInfo.allocationSize = memoryRequirements.size;
+	memoryAllocateInfo.memoryTypeIndex = memoryTypeFromProperties(mPhysicalDeviceMemoryProperties, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+	vkAllocateMemory(mDevice, &memoryAllocateInfo, nullptr, &mUIQuadVertexMemory);
+
+	vkBindBufferMemory(mDevice, mUIQuadVertexBuffer, mUIQuadVertexMemory, 0);
+
+	bufferCreateInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+	vkCreateBuffer(mDevice, &bufferCreateInfo, nullptr, &stagingBuffer);
+
+	vkGetBufferMemoryRequirements(mDevice, stagingBuffer, &memoryRequirements);
+
+	memoryAllocateInfo.allocationSize = memoryRequirements.size;
+	memoryAllocateInfo.memoryTypeIndex = memoryTypeFromProperties(mPhysicalDeviceMemoryProperties, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+	vkAllocateMemory(mDevice, &memoryAllocateInfo, nullptr, &stagingMemory);
+
+	vkBindBufferMemory(mDevice, stagingBuffer, stagingMemory, 0);
+
+	vkMapMemory(mDevice, stagingMemory, 0, bufferRange, 0, (void**)&data);
+	memcpy(data, uiQuadVertices, bufferRange);
+	vkUnmapMemory(mDevice, stagingMemory);
+
+	// Copy staging buffer into vertex buffer
+	commandBufferBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+	commandBufferBeginInfo.pInheritanceInfo = nullptr;
+	vkBeginCommandBuffer(mCommandBuffer, &commandBufferBeginInfo);
+
+	copyRegion.srcOffset = 0;
+	copyRegion.dstOffset = 0;
+	copyRegion.size = bufferRange;
+	vkCmdCopyBuffer(mCommandBuffer, stagingBuffer, mUIQuadVertexBuffer, 1, &copyRegion);
+
+	vkEndCommandBuffer(mCommandBuffer);
+
 	submitInfo.waitSemaphoreCount = 0;
 	submitInfo.pWaitSemaphores = nullptr;
 	submitInfo.pWaitDstStageMask = nullptr;
@@ -2123,14 +2347,18 @@ RenderSystem::~RenderSystem()
 
 	vkDestroySemaphore(mDevice, mRenderComplete, nullptr);
 	vkDestroySemaphore(mDevice, mImageAvailable, nullptr);
+	vkFreeMemory(mDevice, mUIQuadVertexMemory, nullptr);
+	vkDestroyBuffer(mDevice, mUIQuadVertexBuffer, nullptr);
 	vkFreeMemory(mDevice, mCubeVertexMemory, nullptr);
 	vkDestroyBuffer(mDevice, mCubeVertexBuffer, nullptr);
 	vkFreeCommandBuffers(mDevice, mCommandPool, 1, &mCommandBuffer);
 	vkDestroyCommandPool(mDevice, mCommandPool, nullptr);
+	vkDestroyPipeline(mDevice, mUITextPipeline, nullptr);
 	vkDestroyPipeline(mDevice, mPrefilterPipeline, nullptr);
 	vkDestroyPipeline(mDevice, mConvolutePipeline, nullptr);
 	vkDestroyPipeline(mDevice, mSkyboxPipeline, nullptr);
 	vkDestroyPipeline(mDevice, mDirectionalPipeline, nullptr);
+	vkDestroyPipelineLayout(mDevice, mUITextPipelineLayout, nullptr);
 	vkDestroyPipelineLayout(mDevice, mPrefilterPipelineLayout, nullptr);
 	vkDestroyPipelineLayout(mDevice, mConvolutePipelineLayout, nullptr);
 	vkDestroyPipelineLayout(mDevice, mSkyboxPipelineLayout, nullptr);
@@ -2143,8 +2371,11 @@ RenderSystem::~RenderSystem()
 	vkDestroyShaderModule(mDevice, mSkyboxVertexShader, nullptr);
 	vkDestroyShaderModule(mDevice, mFragmentShader, nullptr);
 	vkDestroyShaderModule(mDevice, mVertexShader, nullptr);
+	vkDestroyShaderModule(mDevice, mUITextVertexShader, nullptr);
+	vkDestroyShaderModule(mDevice, mUITextFragmentShader, nullptr);
 	VkDescriptorSet descriptorSets[3] = { mCameraDescriptorSet, mSkyboxDescriptorSet, mEnvironmentDescriptorSet };
 	vkFreeDescriptorSets(mDevice, mDescriptorPool, 3, descriptorSets);
+	vkDestroyDescriptorSetLayout(mDevice, mUITextDescriptorSetLayout, nullptr);
 	vkDestroyDescriptorSetLayout(mDevice, mEnvironmentDescriptorSetLayout, nullptr);
 	vkDestroyDescriptorSetLayout(mDevice, mSkyboxDescriptorSetLayout, nullptr);
 	for (unsigned int i = 0; i < sizeof(mDirectionalLightingDescriptorSetLayouts) / sizeof(VkDescriptorSetLayout); i++)
@@ -2225,6 +2456,16 @@ void RenderSystem::directionalLightRemoved(const Entity& entity)
 	std::vector<EntityID>::iterator IDIterator = std::find(mDirectionalLightIDs.begin(), mDirectionalLightIDs.end(), entity.ID());
 	if (IDIterator != mDirectionalLightIDs.end())
 		removeDirectionalLight(IDIterator);
+}
+
+void RenderSystem::UITextAdded(const Entity& entity)
+{
+	mUITextIDs.push_back(entity.ID());
+}
+
+void RenderSystem::UITextRemoved(const Entity& entity)
+{
+	mUITextIDs.erase(std::find(mUITextIDs.begin(), mUITextIDs.end(), entity.ID()));
 }
 
 void RenderSystem::meshTransformChanged(Transform& transform) const
@@ -2357,13 +2598,20 @@ void RenderSystem::cameraViewChanged(const Transform& transform, const Camera& c
 
 void RenderSystem::update()
 {
-	vkAcquireNextImageKHR(mDevice, mSwapchain, UINT64_MAX, mImageAvailable, VK_NULL_HANDLE, &mCurrentImage);
+	const Font* font = nullptr;
+	if (!mUITextIDs.empty())
+		font = &FontManager::instance().getFont(mUITextManager.getComponent(mUITextIDs[0]).font.c_str());
 
 	vkBeginCommandBuffer(mCommandBuffer, &mCommandBufferBeginInfo);
+
+	/* --== MAIN RENDER PASS ==-- */
+	// Render scene
+	vkAcquireNextImageKHR(mDevice, mSwapchain, UINT64_MAX, mImageAvailable, VK_NULL_HANDLE, &mCurrentImage);
 
 	mRenderPassBeginInfo.framebuffer = mFramebuffers[mCurrentImage];
 	vkCmdBeginRenderPass(mCommandBuffer, &mRenderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
 
+	// Viewport and scissor should remain the same for the UI pass
 	vkCmdSetViewport(mCommandBuffer, 0, 1, &mViewport);
 	vkCmdSetScissor(mCommandBuffer, 0, 1, &mScissor);
 
@@ -2386,6 +2634,7 @@ void RenderSystem::update()
 		}
 	}
 
+	// Render skybox
 	vkCmdNextSubpass(mCommandBuffer, VK_SUBPASS_CONTENTS_INLINE);
 
 	vkCmdBindPipeline(mCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, mSkyboxPipeline);
@@ -2395,6 +2644,42 @@ void RenderSystem::update()
 	vkCmdBindVertexBuffers(mCommandBuffer, 0, 1, &mCubeVertexBuffer, &zeroOffset);
 
 	vkCmdDraw(mCommandBuffer, 36, 1, 0, 0);
+
+	// Render UI
+	vkCmdNextSubpass(mCommandBuffer, VK_SUBPASS_CONTENTS_INLINE);
+
+	vkCmdBindPipeline(mCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, mUITextPipeline);
+
+	vkCmdBindVertexBuffers(mCommandBuffer, 0, 1, &mUIQuadVertexBuffer, &zeroOffset);
+
+	WindowManager& windowManager = WindowManager::instance();
+	
+	for (const EntityID& entity : mUITextIDs)
+	{
+		UIText& uiText = mUITextManager.getComponent(entity);
+		glm::vec2 glyphPosition = uiText.position;
+
+		for (unsigned int i = 0; i < uiText.text.size(); i++)
+		{
+			Glyph& glyph = *font->at(uiText.text[i]);
+
+			if (uiText.text[i] != 32)
+			{
+				glm::vec2 tempGlyphPosition(glyphPosition.x + (float(glyph.bearing.x) / float(windowManager.mWindowWidth)) * uiText.scale, glyphPosition.y - (float(glyph.size.y - glyph.bearing.y) / float(windowManager.mWindowHeight)) * uiText.scale);
+				glm::vec2 glyphScale((float(glyph.size.x) * uiText.scale) / float(windowManager.mWindowWidth), (float(glyph.size.y) * uiText.scale) / float(windowManager.mWindowHeight));
+
+				vkCmdPushConstants(mCommandBuffer, mUITextPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(glm::vec2), &tempGlyphPosition);
+				vkCmdPushConstants(mCommandBuffer, mUITextPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 8, sizeof(glm::vec2), &glyphScale);
+				vkCmdPushConstants(mCommandBuffer, mUITextPipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 16, sizeof(glm::vec3), &uiText.colour);
+
+				vkCmdBindDescriptorSets(mCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, mUITextPipelineLayout, 0, 1, &glyph.descriptorSet, 0, nullptr);
+
+				vkCmdDraw(mCommandBuffer, 4, 1, 0, 0);
+			}
+
+			glyphPosition.x += ((glyph.advance >> 6) / float(windowManager.mWindowWidth)) * uiText.scale;
+		}
+	}
 
 	vkCmdEndRenderPass(mCommandBuffer);
 	vkEndCommandBuffer(mCommandBuffer);

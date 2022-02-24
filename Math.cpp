@@ -1,20 +1,8 @@
 #include "Math.h"
-#include <math.h>
-
-float lerp(const float& start, const float& end, const float& progress)
-{
-    return start + (end - start) * progress;
-}
-
-float slerp(const float& start, const float& end, const float& progress)
-{
-    float smoothProgress = 0.5 - 0.5 * cos(float(PI) * progress);
-    return lerp(start, end, smoothProgress);
-}
 
 LerpTime::LerpTime(const float& minimum, const float& maximum, const float& duration) : mMinimum(minimum), mMaximum(maximum), mDuration(duration)
 {
-    
+
 }
 
 void LerpTime::start()

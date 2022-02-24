@@ -3,6 +3,7 @@
 #include "CameraController.h"
 #include "Gun.h"
 #include "SceneManager.h"
+#include "FontManager.h"
 #include <chrono>
 #include <iostream>
 
@@ -22,8 +23,12 @@ int main()
 	ComponentManager<GunItem>& gunItemManager = ComponentManager<GunItem>::instance();
 	ComponentManager<GunWeapon>& gunWeaponManager = ComponentManager<GunWeapon>::instance();
 	SceneManager& sceneManager = SceneManager::instance();
+	FontManager& fontManager = FontManager::instance();
 
 	renderSystem.setSkybox(&TextureManager::instance().getCubemap({ { "Images/Skybox/right.hdr", "Images/Skybox/left.hdr", "Images/Skybox/bottom.hdr", "Images/Skybox/top.hdr", "Images/Skybox/front.hdr", "Images/Skybox/back.hdr" }, FORMAT_RGBA_HDR16 }));
+
+	const Entity FPSCounter = sceneManager.createEntity();
+	UIText& FPSText = FPSCounter.addComponent<UIText>(UIText{ glm::vec2(0.875f, -0.9f), 1.0f, "", "Fonts/arial.ttf", glm::vec3(1.0f)});
 
 	const Entity directionalLight = sceneManager.createEntity();
 	directionalLight.addComponent<Transform>(TransformCreateInfo{ glm::vec3(0.0f), glm::radians(glm::vec3(45.0f, 0.0f, 0.0f)) });
@@ -82,9 +87,9 @@ int main()
 	Transform& characterTransform = character.addComponent<Transform>(TransformCreateInfo{ glm::vec3(0.0f, 3.0f, -5.0f) });
 	CharacterControllerCreateInfo controllerCreateInfo = {};
 	controllerCreateInfo.radius = 1.0f;
-	controllerCreateInfo.height = 4.0f;
+	controllerCreateInfo.height = 5.0f;
 	controllerCreateInfo.speed = 15.0f;
-	controllerCreateInfo.jumpSpeed = 7.0f;
+	controllerCreateInfo.jumpSpeed = 400.0f;
 	controllerCreateInfo.maxStepHeight = 0.2f;
 	controllerCreateInfo.maxSlope = 0.7f;
 	controllerCreateInfo.invisibleWallHeight = 0.0f;
@@ -109,7 +114,8 @@ int main()
 	while (!windowManager.windowClosed())
 	{
 		now = std::chrono::high_resolution_clock::now();
-		float deltaTime = std::chrono::duration<float>(now - last).count();
+		double deltaTime = std::chrono::duration<double>(now - last).count();
+		FPSText.text = std::to_string((unsigned int)(1.0f / deltaTime)) + " FPS";
 
 		transformSystem.update();
 		renderSystem.update();

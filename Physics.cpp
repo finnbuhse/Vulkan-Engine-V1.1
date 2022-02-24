@@ -121,33 +121,11 @@ PhysicsSystem::PhysicsSystem()
 	mCharacterControllerManager.subscribeAddedEvent(&mControllerComponentAddedCallback);
 	mCharacterControllerManager.subscribeRemovedEvent(&mControllerComponentRemovedCallback);
 
-	mWindowManager.subscribeKeyPressEvent(W, &mForwardCallback);
-	mWindowManager.subscribeKeyPressEvent(S, &mBackwardCallback);
-	mWindowManager.subscribeKeyPressEvent(A, &mLeftCallback);
-	mWindowManager.subscribeKeyPressEvent(D, &mRightCallback);
-
-	mWindowManager.subscribeKeyReleaseEvent(W, &mForwardCallback);
-	mWindowManager.subscribeKeyReleaseEvent(S, &mBackwardCallback);
-	mWindowManager.subscribeKeyReleaseEvent(A, &mLeftCallback);
-	mWindowManager.subscribeKeyReleaseEvent(D, &mRightCallback);
-
 	mRigidBodyComposition = mTransformManager.bit | mRigidBodyManager.bit;
 	mCharacterControllerComposition = mTransformManager.bit | mCharacterControllerManager.bit;
 
 	// Input
 	mLastCursorPosition = mWindowManager.cursorPosition();
-
-	forwardLerp.reverse();
-	forwardLerp.start();
-
-	backLerp.reverse();
-	backLerp.start();
-
-	leftLerp.reverse();
-	leftLerp.start();
-
-	rightLerp.reverse();
-	rightLerp.start();
 
 	// PhysX Initialization
 	foundation = PxCreateFoundation(PX_PHYSICS_VERSION, allocatorCallback, errorCallback);
@@ -217,16 +195,6 @@ PhysicsSystem::~PhysicsSystem()
 
 	mCharacterControllerManager.unsubscribeAddedEvent(&mControllerComponentAddedCallback);
 	mCharacterControllerManager.unsubscribeRemovedEvent(&mControllerComponentRemovedCallback);
-
-	mWindowManager.unsubscribeKeyPressEvent(W, &mForwardCallback);
-	mWindowManager.unsubscribeKeyPressEvent(S, &mBackwardCallback);
-	mWindowManager.unsubscribeKeyPressEvent(A, &mLeftCallback);
-	mWindowManager.unsubscribeKeyPressEvent(D, &mRightCallback);
-
-	mWindowManager.unsubscribeKeyReleaseEvent(W, &mForwardCallback);
-	mWindowManager.unsubscribeKeyReleaseEvent(S, &mBackwardCallback);
-	mWindowManager.unsubscribeKeyReleaseEvent(A, &mLeftCallback);
-	mWindowManager.unsubscribeKeyReleaseEvent(D, &mRightCallback);
 
 	for (physx::PxCollection* collection : mCollections)
 	{
@@ -446,7 +414,7 @@ void PhysicsSystem::controllerComponentRemoved(const Entity& entity)
 	}
 }
 
-void PhysicsSystem::update(const float& deltaTime)
+void PhysicsSystem::update(const double& deltaTime)
 {
 	scene->simulate(deltaTime);
 	scene->fetchResults(true);
@@ -463,7 +431,31 @@ void PhysicsSystem::update(const float& deltaTime)
 	}
 
 	// Character controllers
+	bool forwardDown = mWindowManager.keyDown(W);
+	bool backwardDown = mWindowManager.keyDown(S);
+	bool rightDown = mWindowManager.keyDown(D);
+	bool leftDown = mWindowManager.keyDown(A);
 	bool spaceDown = mWindowManager.keyDown(Space);
+
+	if ((forwardDuration < -deltaTime && !backwardDown) | forwardDown)
+		forwardDuration += deltaTime;
+	else if (forwardDuration > deltaTime | backwardDown )
+		forwardDuration -= deltaTime;
+	/*
+	else if (glm::abs(forwardDuration) < deltaTime)
+		forwardDuration = 0.0;
+	*/
+	forwardDuration = glm::clamp(forwardDuration, -CHARACTER_ACCELERATION_TIME, CHARACTER_ACCELERATION_TIME);
+
+	if ((rightDuration < -deltaTime && !leftDown) | rightDown)
+		rightDuration += deltaTime;
+	else if (rightDuration > deltaTime | leftDown)
+		rightDuration -= deltaTime;
+	/*
+	else if (glm::abs(rightDuration) < deltaTime)
+		rightDuration = 0.0;
+	*/
+	rightDuration = glm::clamp(rightDuration, -CHARACTER_ACCELERATION_TIME, CHARACTER_ACCELERATION_TIME);
 
 	glm::vec2 cursorPosition = mWindowManager.cursorPosition();
 	glm::vec2 cursorDelta = cursorPosition - mLastCursorPosition;
@@ -475,18 +467,16 @@ void PhysicsSystem::update(const float& deltaTime)
 		Transform& transform = mTransformManager.getComponent(ID);
 		CharacterController& controller = mCharacterControllerManager.getComponent(ID);
 
+		// Yaw character with cursor x axis
 		transform.rotate(-cursorDelta.x * 0.005f, glm::vec3(0.0f, 1.0f, 0.0f));
 
-		bool grounded = raycast(glm::vec3(transform.position.x, transform.position.y - 0.5 * controller.height - controller.radius, transform.position.z), glm::vec3(0.0f, -1.0f, 0.0f), 0.01f, UNDEFINED).hasBlock;
-
+		bool grounded = raycast(glm::vec3(transform.position.x, transform.position.y - 0.5 * controller.height - controller.radius, transform.position.z), glm::vec3(0.0f, -1.0f, 0.0f), 0.02f, UNDEFINED).hasBlock;
+		
 		if (grounded)
 		{
 			// Calculate global move velocity.
-			glm::vec3 xzVelocity(0.0f);
-			xzVelocity += transform.direction() * forwardLerp.sample();
-			xzVelocity += transform.direction(glm::vec3(0.0f, 0.0f, 1.0f)) * backLerp.sample();
-			xzVelocity += transform.direction(glm::vec3(-1.0f, 0.0f, 0.0f)) * leftLerp.sample();
-			xzVelocity += transform.direction(glm::vec3(1.0f, 0.0f, 0.0f)) * rightLerp.sample();
+			glm::vec3 xzVelocity(lerp(0.0, 1.0, rightDuration / CHARACTER_ACCELERATION_TIME), 0.0f, -lerp(0.0, 1.0, forwardDuration / CHARACTER_ACCELERATION_TIME));
+			xzVelocity = transform.rotation * xzVelocity;
 			float length = glm::length(xzVelocity);
 			if (length > 1.0f)
 				xzVelocity /= length;
@@ -496,14 +486,14 @@ void PhysicsSystem::update(const float& deltaTime)
 			controller.velocity.z = xzVelocity.z;
 
 			if (spaceDown)
-				controller.velocity.y = controller.jumpSpeed;
+				controller.velocity.y = controller.jumpSpeed * deltaTime;
 			else
-				controller.velocity.y = 0.0f;
+				controller.velocity.y = 0.0;
 		}
 		else
 			controller.velocity.y -= 9.8 * deltaTime;
 
-		glm::vec3 displacement = controller.velocity * deltaTime;
+		glm::vec3 displacement = controller.velocity * (float)deltaTime;
 		physx::PxControllerCollisionFlags flags = controller.pxController->move({ displacement.x, displacement.y, displacement.z }, 0.01f, deltaTime, 0);
 
 		physx::PxExtendedVec3 position = controller.pxController->getPosition();
@@ -516,26 +506,6 @@ void PhysicsSystem::update(const float& deltaTime)
 		position = controller.pxController->getPosition();
 		transform.position = glm::vec3(position.x, position.y, position.z);
 	}
-}
-
-void PhysicsSystem::forwardKey()
-{
-	forwardLerp.reverse();
-}
-
-void PhysicsSystem::backKey()
-{
-	backLerp.reverse();
-}
-
-void PhysicsSystem::leftKey()
-{
-	leftLerp.reverse();
-}
-
-void PhysicsSystem::rightKey()
-{
-	rightLerp.reverse();
 }
 
 void PhysicsSystem::staticTransformChanged(const Transform& transform) const

@@ -1,11 +1,21 @@
 #pragma once
+#include <math.h>
 #include <chrono>
 
-#define PI 3.1415926536f
+#define PI 3.1415926536
 
-float lerp(const float& start, const float& end, const float& progress);
+template <typename T>
+T lerp(const T& start, const T& end, const T& progress)
+{
+    return start + (end - start) * progress;
+}
 
-float slerp(const float& start, const float& end, const float& progress);
+template <typename T>
+T slerp(const T& start, const T& end, const T& progress)
+{
+    T smoothProgress = progress > 0.0 ? 0.5 - 0.5 * cos(T(PI) * progress) : 0.5 * cos(T(PI) * progress) - 0.5;
+    return lerp(start, end, smoothProgress);
+}
 
 class LerpTime
 {

@@ -9,7 +9,7 @@
 #define PX_RECORD_MEMORY_ALLOCATIONS true
 #define PX_THREADS 2
 
-#define CHARACTER_ACCELERATION_TIME 0.3f
+#define CHARACTER_ACCELERATION_TIME 0.5
 
 struct PxMaterialInfo
 {
@@ -222,11 +222,6 @@ private:
 
 	const TransformChangedCallback mStaticTransformChangedCallback = std::bind(&PhysicsSystem::staticTransformChanged, this, std::placeholders::_1);
 
-	const KeyCallback mForwardCallback = std::bind(&PhysicsSystem::forwardKey, this);
-	const KeyCallback mBackwardCallback = std::bind(&PhysicsSystem::backKey, this);
-	const KeyCallback mLeftCallback = std::bind(&PhysicsSystem::leftKey, this);
-	const KeyCallback mRightCallback = std::bind(&PhysicsSystem::rightKey, this);
-
 	std::unordered_map<PxMaterialInfo, physx::PxMaterial*, PxMaterialInfoHasher> mMaterials;
 	std::vector<physx::PxCollection*> mCollections;
 
@@ -252,10 +247,8 @@ private:
 
 	glm::vec2 mLastCursorPosition;
 
-	LerpTime forwardLerp = LerpTime(0.0f, 1.0f, CHARACTER_ACCELERATION_TIME);
-	LerpTime backLerp = LerpTime(0.0f, 1.0f, CHARACTER_ACCELERATION_TIME);
-	LerpTime leftLerp = LerpTime(0.0f, 1.0f, CHARACTER_ACCELERATION_TIME);
-	LerpTime rightLerp = LerpTime(0.0f, 1.0f, CHARACTER_ACCELERATION_TIME);
+	double forwardDuration = 0.0;
+	double rightDuration = 0.0;
 
 	PhysicsSystem();
 
@@ -273,13 +266,7 @@ public:
 	void controllerComponentAdded(const Entity& entity);
 	void controllerComponentRemoved(const Entity& entity);
 
-	void update(const float& delta);
-
-	// Invoked on press and release
-	void forwardKey();
-	void backKey();
-	void leftKey();
-	void rightKey();
+	void update(const double& delta);
 
 	void staticTransformChanged(const Transform& transform) const;
 

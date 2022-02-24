@@ -105,6 +105,16 @@ struct DirectionalLightCreateInfo
 	operator DirectionalLight() const;
 };
 
+struct UIText
+{
+	glm::vec2 position;
+	float scale;
+
+	std::string text;
+	std::string font;
+	glm::vec3 colour;
+};
+
 class RenderSystem
 {
 private:
@@ -113,11 +123,13 @@ private:
 	friend class TextureManager;
 	friend class Texture;
 	friend class Cubemap;
+	friend class FontManager;
 
 	ComponentManager<Transform>& mTransformManager = ComponentManager<Transform>::instance();
 	ComponentManager<Mesh>& mMeshManager = ComponentManager<Mesh>::instance();
 	ComponentManager<DirectionalLight>& mDirectionalLightManager = ComponentManager<DirectionalLight>::instance();
 	ComponentManager<Camera>& mCameraManager = ComponentManager<Camera>::instance();
+	ComponentManager<UIText>& mUITextManager = ComponentManager<UIText>::instance();
 
 	const ComponentAddedCallback mTransformAddedCallback = std::bind(&RenderSystem::transformAdded, this, std::placeholders::_1);
 	const ComponentRemovedCallback mTransformRemovedCallback = std::bind(&RenderSystem::transformRemoved, this, std::placeholders::_1);
@@ -125,6 +137,8 @@ private:
 	const ComponentRemovedCallback mMeshRemovedCallback = std::bind(&RenderSystem::meshRemoved, this, std::placeholders::_1);
 	const ComponentAddedCallback mDirectionalLightAddedCallback = std::bind(&RenderSystem::directionalLightAdded, this, std::placeholders::_1);
 	const ComponentRemovedCallback mDirectionalLightRemovedCallback = std::bind(&RenderSystem::directionalLightRemoved, this, std::placeholders::_1);
+	const ComponentAddedCallback mUITextAddedCallback = std::bind(&RenderSystem::UITextAdded, this, std::placeholders::_1);
+	const ComponentAddedCallback mUITextRemovedCallback = std::bind(&RenderSystem::UITextRemoved, this, std::placeholders::_1);
 
 	const TransformChangedCallback mMeshTransformChangedCallback = std::bind(&RenderSystem::meshTransformChanged, this, std::placeholders::_1);
 	const TransformChangedCallback mDirectionalLightTransformChangedCallback = std::bind(&RenderSystem::directionalLightTransformChanged, this, std::placeholders::_1);
@@ -136,6 +150,7 @@ private:
 
 	std::vector<EntityID> mMeshIDs;
 	std::vector<EntityID> mDirectionalLightIDs;
+	std::vector<EntityID> mUITextIDs;
 
 	#pragma region Vulkan resources
 	VkInstance mVkInstance = VK_NULL_HANDLE;
@@ -196,33 +211,45 @@ private:
 	
 	// mConvolutePipeline
 	VkDescriptorSetLayout mEnvironmentDescriptorSetLayout = VK_NULL_HANDLE;
+
+	// mUITextPipeline
+	VkDescriptorSetLayout mUITextDescriptorSetLayout = {};
 	/* ---------------------- */
 	
 	VkDescriptorSet mCameraDescriptorSet = VK_NULL_HANDLE;
 	VkDescriptorSet mSkyboxDescriptorSet = VK_NULL_HANDLE;
 	VkDescriptorSet mEnvironmentDescriptorSet = VK_NULL_HANDLE;
 
+	// PBR
 	VkShaderModule mVertexShader = VK_NULL_HANDLE;
 	VkShaderModule mFragmentShader = VK_NULL_HANDLE;
 
+	// Skybox
 	VkShaderModule mSkyboxVertexShader = VK_NULL_HANDLE;
 	VkShaderModule mSkyboxFragmentShader = VK_NULL_HANDLE;
 
+	// Image Based Lighting
 	VkShaderModule mCubemapVertexShader = VK_NULL_HANDLE;
 	VkShaderModule mCubemapGeometryShader = VK_NULL_HANDLE;
 	VkShaderModule mConvoluteFragmentShader = VK_NULL_HANDLE;
 	VkShaderModule mPrefilterFragmentShader = VK_NULL_HANDLE;
 
+	// UI
+	VkShaderModule mUITextVertexShader = VK_NULL_HANDLE;
+	VkShaderModule mUITextFragmentShader = VK_NULL_HANDLE;
+
 	VkPipelineLayout mDirectionalPipelineLayout = VK_NULL_HANDLE;
 	VkPipelineLayout mSkyboxPipelineLayout = VK_NULL_HANDLE;
 	VkPipelineLayout mConvolutePipelineLayout = VK_NULL_HANDLE;
 	VkPipelineLayout mPrefilterPipelineLayout = VK_NULL_HANDLE;
+	VkPipelineLayout mUITextPipelineLayout = VK_NULL_HANDLE;
 
 	VkPipeline mDirectionalPipeline = VK_NULL_HANDLE;
 	VkPipeline mSkyboxPipeline = VK_NULL_HANDLE;
-
 	VkPipeline mConvolutePipeline = VK_NULL_HANDLE;
 	VkPipeline mPrefilterPipeline = VK_NULL_HANDLE;
+	VkPipeline mUITextPipeline = VK_NULL_HANDLE;
+
 	VkViewport mPrefilterViewport = {};
 	VkRect2D mPrefilterScissor = {};
 
@@ -233,6 +260,9 @@ private:
 
 	VkBuffer mCubeVertexBuffer = VK_NULL_HANDLE;
 	VkDeviceMemory mCubeVertexMemory = VK_NULL_HANDLE;
+
+	VkBuffer mUIQuadVertexBuffer = VK_NULL_HANDLE;
+	VkDeviceMemory mUIQuadVertexMemory = VK_NULL_HANDLE;
 
 	VkSemaphore mImageAvailable = VK_NULL_HANDLE;
 	VkSemaphore mRenderComplete = VK_NULL_HANDLE;
@@ -277,6 +307,8 @@ public:
 	void meshRemoved(const Entity& entity);
 	void directionalLightAdded(const Entity& entity);
 	void directionalLightRemoved(const Entity& entity);
+	void UITextAdded(const Entity& entity);
+	void UITextRemoved(const Entity& entity);
 
 	void meshTransformChanged(Transform& transform) const;
 	void directionalLightTransformChanged(Transform& transform) const;

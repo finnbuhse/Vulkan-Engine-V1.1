@@ -18,19 +18,19 @@ FormatInfo getFormatInfo(const VkFormat& format)
 	unsigned int uiFormat = (unsigned int)format;
 	if (uiFormat > VK_FORMAT_A1R5G5B5_UNORM_PACK16 && uiFormat < VK_FORMAT_R8G8_UNORM)
 	{
-		formatInfo.componentMapping = { VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_ONE, VK_COMPONENT_SWIZZLE_ONE, VK_COMPONENT_SWIZZLE_ONE };
+		formatInfo.componentMapping = { VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_ZERO, VK_COMPONENT_SWIZZLE_ZERO, VK_COMPONENT_SWIZZLE_ZERO };
 		formatInfo.nChannels = 1;
 		formatInfo.bytesPerChannel = 1;
 	}
 	else if (uiFormat > VK_FORMAT_R8_SRGB && uiFormat < VK_FORMAT_R8G8B8_UNORM)
 	{
-		formatInfo.componentMapping = { VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_ONE, VK_COMPONENT_SWIZZLE_ONE };
+		formatInfo.componentMapping = { VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_ZERO, VK_COMPONENT_SWIZZLE_ZERO };
 		formatInfo.nChannels = 2;
 		formatInfo.bytesPerChannel = 1;
 	}
 	else if (uiFormat > VK_FORMAT_R8G8_SRGB && uiFormat < VK_FORMAT_R8G8B8A8_UNORM)
 	{
-		formatInfo.componentMapping = { VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_B, VK_COMPONENT_SWIZZLE_ONE };
+		formatInfo.componentMapping = { VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_ZERO, VK_COMPONENT_SWIZZLE_ZERO };
 		formatInfo.nChannels = 3;
 		formatInfo.bytesPerChannel = 1;
 	}
@@ -42,19 +42,19 @@ FormatInfo getFormatInfo(const VkFormat& format)
 	}
 	else if (uiFormat > VK_FORMAT_A2B10G10R10_SINT_PACK32 && uiFormat < VK_FORMAT_R16G16_UNORM)
 	{
-		formatInfo.componentMapping = { VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_ONE, VK_COMPONENT_SWIZZLE_ONE, VK_COMPONENT_SWIZZLE_ONE };
+		formatInfo.componentMapping = { VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_ZERO, VK_COMPONENT_SWIZZLE_ZERO, VK_COMPONENT_SWIZZLE_ZERO };
 		formatInfo.nChannels = 1;
 		formatInfo.bytesPerChannel = 2;
 	}
 	else if (uiFormat > VK_FORMAT_R16_SFLOAT && uiFormat < VK_FORMAT_R16G16B16_UNORM)
 	{
-		formatInfo.componentMapping = { VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_ONE, VK_COMPONENT_SWIZZLE_ONE };
+		formatInfo.componentMapping = { VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_ZERO, VK_COMPONENT_SWIZZLE_ZERO };
 		formatInfo.nChannels = 2;
 		formatInfo.bytesPerChannel = 2;
 	}
 	else if (uiFormat > VK_FORMAT_R16G16_SFLOAT && uiFormat < VK_FORMAT_R16G16B16A16_UNORM)
 	{
-		formatInfo.componentMapping = { VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_B, VK_COMPONENT_SWIZZLE_ONE };
+		formatInfo.componentMapping = { VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_B, VK_COMPONENT_SWIZZLE_ZERO };
 		formatInfo.nChannels = 3;
 		formatInfo.bytesPerChannel = 2;
 	}
@@ -66,19 +66,19 @@ FormatInfo getFormatInfo(const VkFormat& format)
 	}
 	else if (uiFormat > VK_FORMAT_R16G16B16A16_SFLOAT && uiFormat < VK_FORMAT_R32G32_UINT)
 	{
-		formatInfo.componentMapping = { VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_ONE, VK_COMPONENT_SWIZZLE_ONE, VK_COMPONENT_SWIZZLE_ONE };
+		formatInfo.componentMapping = { VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_ZERO, VK_COMPONENT_SWIZZLE_ZERO, VK_COMPONENT_SWIZZLE_ZERO };
 		formatInfo.nChannels = 1;
 		formatInfo.bytesPerChannel = 4;
 	}
 	else if (uiFormat > VK_FORMAT_R32_SFLOAT && uiFormat < VK_FORMAT_R32G32B32_UINT)
 	{
-		formatInfo.componentMapping = { VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_ONE, VK_COMPONENT_SWIZZLE_ONE };
+		formatInfo.componentMapping = { VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_ZERO, VK_COMPONENT_SWIZZLE_ZERO };
 		formatInfo.nChannels = 2;
 		formatInfo.bytesPerChannel = 4;
 	}
 	else if (uiFormat > VK_FORMAT_R32G32_SFLOAT && uiFormat < VK_FORMAT_R32G32B32A32_UINT)
 	{
-		formatInfo.componentMapping = { VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_B, VK_COMPONENT_SWIZZLE_ONE };
+		formatInfo.componentMapping = { VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_B, VK_COMPONENT_SWIZZLE_ZERO };
 		formatInfo.nChannels = 3;
 		formatInfo.bytesPerChannel = 4;
 	}
@@ -419,7 +419,7 @@ Cubemap::Cubemap(CubemapInfo cubemapInfo)
 	const VkDeviceSize imageSize = 6 * layerSize;
 	const unsigned int nMips = (unsigned int)std::floor(std::log2(width > height ? width : height)) + 1;
 
-	assert(("[ERROR] Unsupported texture format", formatProperties.maxExtent.width >= width && formatProperties.maxExtent.height >= height && formatProperties.maxExtent.depth >= 1 && formatProperties.maxMipLevels >= 1 && formatProperties.maxArrayLayers >= 1 && formatProperties.sampleCounts & VK_SAMPLE_COUNT_1_BIT && formatProperties.maxResourceSize >= imageSize));
+	 assert(("[ERROR] Unsupported texture format", formatProperties.maxExtent.width >= width && formatProperties.maxExtent.height >= height && formatProperties.maxExtent.depth >= 1 && formatProperties.maxMipLevels >= 1 && formatProperties.maxArrayLayers >= 1 && formatProperties.sampleCounts & VK_SAMPLE_COUNT_1_BIT && formatProperties.maxResourceSize >= imageSize));
 
 	// Create image
 	VkImageCreateInfo imageCreateInfo = {};
