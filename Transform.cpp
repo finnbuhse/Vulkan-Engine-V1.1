@@ -25,22 +25,6 @@ void print(const glm::mat4& matrix)
 	}
 }
 
-TransformCreateInfo::operator Transform() const
-{
-	Transform transform = {};
-	transform.matrix = glm::mat4(1.0f);
-	transform.lastPosition = glm::vec3(0.0f);
-	transform.lastRotation = glm::vec3(0.0f);
-	transform.lastScale = glm::vec3(1.0f);
-	transform.position = position;
-	transform.rotation = rotation;
-	transform.scale = scale;
-	transform.worldPosition = glm::vec3(0.0f);
-	transform.worldRotation = glm::vec3(0.0f);
-	transform.worldScale = glm::vec3(1.0f);
-	return transform;
-}
-
 glm::vec3 Transform::direction(const glm::vec3& direction) const
 {
 	return rotation * direction;
@@ -77,7 +61,6 @@ void Transform::addChild(const Entity& child)
 
 void Transform::removeChild(const Entity& child)
 {
-	
 	child.getComponent<Transform>().parentID = NULL;
 
 	TransformSystem::instance().mEntityIDs.push_back(child.ID());
@@ -93,6 +76,22 @@ void Transform::subscribeChangedEvent(const TransformChangedCallback* callback)
 void Transform::unsubscribeChangedEvent(const TransformChangedCallback* callback)
 {
 	changedCallbacks.remove(changedCallbacks.find((TransformChangedCallback*)callback));
+}
+
+TransformCreateInfo::operator Transform() const
+{
+	Transform transform = {};
+	transform.matrix = glm::mat4(1.0f);
+	transform.lastPosition = glm::vec3(0.0f);
+	transform.lastRotation = glm::vec3(0.0f);
+	transform.lastScale = glm::vec3(1.0f);
+	transform.position = position;
+	transform.rotation = rotation;
+	transform.scale = scale;
+	transform.worldPosition = glm::vec3(0.0f);
+	transform.worldRotation = glm::vec3(0.0f);
+	transform.worldScale = glm::vec3(1.0f);
+	return transform;
 }
 
 template<>
@@ -116,10 +115,104 @@ void deserialize(const std::vector<char>& vecData, Transform& write)
 	write.scale = createInfo.scale;
 }
 
+glm::mat3 translateMatrix(const glm::vec2& translation)
+{
+	glm::mat3 matrix;
+	matrix[0] = { 1, 0, 0 };
+	matrix[1] = { 0, 1, 0 };
+	matrix[2] = { translation.x, translation.y, 0 };
+	return matrix;
+}
+
+/*
+Construct a 2D rotation matrix.
+\param angle: Angle in radians of the rotation.
+*/
+glm::mat3 rotateMatrix(const float& angle)
+{
+	glm::mat3 matrix;
+	float cos = glm::cos(angle);
+	float sin = glm::sin(angle);
+	matrix[0] = { cos, -sin, 0 };
+	matrix[1] = { sin, cos, 0 };
+	matrix[2] = { 0, 0, 0 };
+	return matrix;
+}
+
+glm::mat3 enlargeMatrix(const glm::vec2 enlargement)
+{
+	glm::mat3 matrix;
+	matrix[0] = { enlargement.x, 0, 0 };
+	matrix[1] = { 0, enlargement.y, 0 };
+	matrix[2] = { 0, 0, 0 };
+	return matrix;
+}
+
+void Transform2D::translate(const glm::vec2& translation)
+{
+	position += translation;
+}
+
+void Transform2D::rotate(const float& angle)
+{
+	rotation += angle;
+}
+
+void Transform2D::enlarge(const glm::vec2& factor)
+{
+	scale *= factor;
+}
+
+void Transform2D::addChild(const Entity& child)
+{
+	TransformSystem& transformSystem = TransformSystem::instance();
+	transformSystem.mEntity2DIDs.erase(std::find(transformSystem.mEntity2DIDs.begin(), transformSystem.mEntity2DIDs.end(), child.ID()));
+
+	child.getComponent<Transform2D>().parentID = entityID;
+	childrenIDs.push(child.ID());
+}
+
+void Transform2D::removeChild(const Entity& child)
+{
+	child.getComponent<Transform2D>().parentID = NULL;
+
+	TransformSystem::instance().mEntity2DIDs.push_back(child.ID());
+
+	childrenIDs.remove(childrenIDs.find(child.ID()));
+}
+
+void Transform2D::subscribeChangedEvent(const Transform2DChangedCallback* callback)
+{
+	changedCallbacks.push((Transform2DChangedCallback*)callback);
+}
+
+void Transform2D::unsubscribeChangedEvent(const Transform2DChangedCallback* callback)
+{
+	changedCallbacks.remove(changedCallbacks.find((Transform2DChangedCallback*)callback));
+}
+
+Transform2DCreateInfo::operator Transform2D() const
+{
+	Transform2D transform = {};
+	transform.matrix = glm::mat3(1.0f);
+	transform.lastPosition = glm::vec2(0.0f);
+	transform.lastRotation = 0.0f;
+	transform.lastScale = glm::vec2(1.0f);
+	transform.position = position;
+	transform.rotation = rotation;
+	transform.scale = scale;
+	transform.worldPosition = glm::vec2(0.0f);
+	transform.worldRotation = 0.0f;
+	transform.worldScale = glm::vec2(1.0f);
+	return transform;
+}
+
 TransformSystem::TransformSystem()
 {
 	mTransformManager.subscribeAddedEvent(&mComponentAddedCallback);
 	mTransformManager.subscribeRemovedEvent(&mComponentRemovedCallback);
+	mTransform2DManager.subscribeAddedEvent(&mComponent2DAddedCallback);
+	mTransform2DManager.subscribeRemovedEvent(&mComponent2DRemovedCallback);
 }
 
 void TransformSystem::updateTransform(const EntityID& entityID) const
@@ -150,7 +243,10 @@ void TransformSystem::updateTransform(const EntityID& entityID) const
 			transform.matrix = parentTransform.matrix * glm::translate(glm::mat4(1.0f), transform.position) * glm::mat4_cast(transform.rotation) * glm::scale(glm::mat4(1.0f), transform.scale);
 
 			if (transform.positionChanged)
-				transform.worldPosition = parentTransform.worldPosition + parentTransform.worldRotation * transform.position; // Update world position.
+			{
+				glm::vec4 temp = parentTransform.matrix * glm::vec4(transform.position, 1.0f);
+				transform.worldPosition = glm::vec3(temp.x, temp.y, temp.z); // Update world position.
+			}
 
 			if (transform.rotationChanged)
 				transform.worldRotation = parentTransform.worldRotation * transform.rotation; // Update world rotation.
@@ -191,6 +287,70 @@ void TransformSystem::updateTransform(const EntityID& entityID) const
 		updateTransform(transform.childrenIDs[i]);
 }
 
+void TransformSystem::updateTransform2D(const EntityID& entityID) const
+{
+	Transform2D& transform = mTransform2DManager.getComponent(entityID);
+
+	// Check for change in position, rotation, and scale.
+	transform.positionChanged = transform.position != transform.lastPosition;
+	transform.rotationChanged = transform.rotation != transform.lastRotation;
+	transform.scaleChanged = transform.scale != transform.lastScale;
+
+	if (transform.parentID)
+	{
+		const Transform2D& parentTransform = mTransform2DManager.getComponent(transform.parentID);
+
+		transform.positionChanged |= parentTransform.positionChanged || parentTransform.rotationChanged || parentTransform.scaleChanged;
+		transform.rotationChanged |= parentTransform.rotationChanged;
+		transform.scaleChanged |= parentTransform.scaleChanged;
+
+		if (transform.positionChanged || transform.rotationChanged || transform.scaleChanged)
+		{
+			transform.matrix = parentTransform.matrix * translateMatrix(transform.position) * rotateMatrix(transform.rotation) * enlargeMatrix(transform.scale);
+
+			if (transform.positionChanged)
+			{
+				glm::vec3 temp = parentTransform.matrix * glm::vec3(transform.position, 1.0f);
+				transform.worldPosition = glm::vec2(temp.x, temp.y);
+			}
+			if (transform.rotationChanged)
+				transform.worldRotation = parentTransform.worldRotation + transform.rotation;
+
+			if (transform.scaleChanged)
+				transform.worldScale = parentTransform.worldScale * transform.scale;
+
+			for (unsigned int i = 0; i < transform.changedCallbacks.length; i++)
+				(*transform.changedCallbacks[i])(transform);
+
+			transform.lastPosition = transform.position;
+			transform.lastRotation = transform.rotation;
+			transform.lastScale = transform.scale;
+		}
+	}
+	else
+	{
+		if (transform.positionChanged || transform.rotationChanged || transform.scaleChanged)
+		{
+			transform.matrix = translateMatrix(transform.position) * rotateMatrix(transform.rotation) * enlargeMatrix(transform.scale);
+
+			transform.worldPosition = transform.position;
+			transform.worldRotation = transform.rotation;
+			transform.worldScale = transform.scale;
+
+			for (unsigned int i = 0; i < transform.changedCallbacks.length; i++)
+				(*transform.changedCallbacks[i])(transform);
+
+			transform.lastPosition = transform.position;
+			transform.lastRotation = transform.rotation;
+			transform.lastScale = transform.scale;
+		}
+	}
+
+	// Update children.
+	for (unsigned int i = 0; i < transform.childrenIDs.length; i++)
+		updateTransform2D(transform.childrenIDs[i]);
+}
+
 TransformSystem& TransformSystem::instance()
 {
 	static TransformSystem instance;
@@ -201,6 +361,8 @@ TransformSystem::~TransformSystem()
 {
 	mTransformManager.unsubscribeAddedEvent(&mComponentAddedCallback);
 	mTransformManager.unsubscribeRemovedEvent(&mComponentRemovedCallback);
+	mTransform2DManager.unsubscribeAddedEvent(&mComponent2DAddedCallback);
+	mTransform2DManager.unsubscribeRemovedEvent(&mComponent2DRemovedCallback);
 }
 
 void TransformSystem::componentAdded(const Entity& entity)
@@ -231,8 +393,39 @@ void TransformSystem::componentRemoved(const Entity& entity)
 	mEntityIDs.erase(std::find(mEntityIDs.begin(), mEntityIDs.end(), entity.ID()));
 }
 
+void TransformSystem::component2DAdded(const Entity& entity)
+{
+	Transform2D& transform = entity.getComponent<Transform2D>();
+	transform.childrenIDs.initialize();
+	transform.changedCallbacks.initialize();
+	transform.entityID = entity.ID();
+	transform.parentID = NULL;
+
+	mEntity2DIDs.push_back(entity.ID());
+}
+
+void TransformSystem::component2DRemoved(const Entity& entity)
+{
+	Transform2D& transform = entity.getComponent<Transform2D>();
+	if (transform.parentID)
+		mTransformManager.getComponent(transform.parentID).removeChild(entity);
+
+	for (unsigned int i = 0; i < transform.childrenIDs.length; i++)
+	{
+		mTransformManager.getComponent(transform.childrenIDs[i]).parentID = NULL;
+		mEntityIDs.push_back(transform.childrenIDs[i]);
+	}
+	transform.childrenIDs.free();
+	transform.changedCallbacks.free();
+
+	mEntityIDs.erase(std::find(mEntityIDs.begin(), mEntityIDs.end(), entity.ID()));
+}
+
 void TransformSystem::update() const
 {
 	for (const EntityID& ID : mEntityIDs)
 		updateTransform(ID);
+
+	for (const EntityID& ID : mEntity2DIDs)
+		updateTransform2D(ID);
 }

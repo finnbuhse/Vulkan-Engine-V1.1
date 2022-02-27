@@ -1,5 +1,4 @@
 #include "Mesh.h"
-#include "WindowManager.h"
 #include "FontManager.h"
 #include "assimp/Importer.hpp"
 #include "assimp/scene.h"
@@ -7,15 +6,6 @@
 #include "assimp/material.h"
 #include <stdlib.h>
 #include <iostream>
-
-#define VSYNC true
-
-#define IRRADIANCE_WIDTH_HEIGHT 64
-#define PREFILTER_WIDTH_HEIGHT 1080
-
-#define MAX_DIRECTIONAL_LIGHTS 500
-#define MAX_POINT_LIGHTS 500
-#define MAX_SPOT_LIGHTS 500
 
 constexpr VkDeviceSize zeroOffset = 0;
 
@@ -311,6 +301,22 @@ DirectionalLightCreateInfo::operator DirectionalLight() const
 	return light;
 }
 
+UIButtonCreateInfo::operator UIButton() const
+{
+	TextureManager& textureManager = TextureManager::instance();
+
+	UIButton uiButton;
+	uiButton.position = position;
+	uiButton.extent = extent;
+	uiButton.colour = colour;
+	uiButton._unpressedTexture = &textureManager.getTexture({ unpressed, FORMAT_RGBA });
+	uiButton._canpressTexture = &textureManager.getTexture({ canpress, FORMAT_RGBA });
+	uiButton._pressedTexture = &textureManager.getTexture({ pressed, FORMAT_RGBA });
+	uiButton.callback = callback;
+
+	return uiButton;
+}
+
 RenderSystem::RenderSystem()
 {
 	mTransformManager.subscribeAddedEvent(&mTransformAddedCallback);
@@ -321,6 +327,8 @@ RenderSystem::RenderSystem()
 	mDirectionalLightManager.subscribeRemovedEvent(&mDirectionalLightRemovedCallback);
 	mUITextManager.subscribeAddedEvent(&mUITextAddedCallback);
 	mUITextManager.subscribeRemovedEvent(&mUITextRemovedCallback);
+	mUIButtonManager.subscribeAddedEvent(&mUIButtonAddedCallback);
+	mUIButtonManager.subscribeRemovedEvent(&mUIButtonRemovedCallback);
 
 	mMeshComposition = mTransformManager.bit | mMeshManager.bit;
 	mDirectionalLightComposition = mTransformManager.bit | mDirectionalLightManager.bit; 
@@ -340,11 +348,9 @@ RenderSystem::RenderSystem()
 	system("glslangValidator.exe -V ShaderSource/prefilter.frag -o prefilterFragment.spv");
 	system("glslangValidator.exe -V ShaderSource/skybox.vert -o skyboxVertex.spv");
 	system("glslangValidator.exe -V ShaderSource/skybox.frag -o skyboxFragment.spv");
-	system("glslangValidator.exe -V ShaderSource/uiText.vert -o uiTextVertex.spv");
-	system("glslangValidator.exe -V ShaderSource/uiText.frag -o uiTextFragment.spv");
+	system("glslangValidator.exe -V ShaderSource/2DQuad.vert -o 2DQuadVertex.spv");
+	system("glslangValidator.exe -V ShaderSource/ui.frag -o uiFragment.spv");
 	std::cout << "Finished." << std::endl;
-
-	WindowManager& windowManager = WindowManager::instance();
 
 	/* VULKAN CONFIGURATION */
 	const char* layers[1] = { "VK_LAYER_KHRONOS_validation" };
@@ -362,9 +368,9 @@ RenderSystem::RenderSystem()
 	VkApplicationInfo applicationInfo = {};
 	applicationInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
 	applicationInfo.pNext = nullptr;
-	applicationInfo.pApplicationName = windowManager.mWindowTitle;
+	applicationInfo.pApplicationName = mWindowManager.mWindowTitle;
 	applicationInfo.applicationVersion = 1;
-	applicationInfo.pEngineName = windowManager.mWindowTitle;
+	applicationInfo.pEngineName = mWindowManager.mWindowTitle;
 	applicationInfo.engineVersion = 1;
 	applicationInfo.apiVersion = VK_API_VERSION_1_2;
 
@@ -402,7 +408,7 @@ RenderSystem::RenderSystem()
 	vkCreateInstance(&instanceCreateInfo, nullptr, &mVkInstance);
 	#pragma endregion
 
-	glfwCreateWindowSurface(mVkInstance, windowManager.mWindow, nullptr, &mSurface);
+	glfwCreateWindowSurface(mVkInstance, mWindowManager.mWindow, nullptr, &mSurface);
 
 	#pragma region Create device
 	vkEnumeratePhysicalDevices(mVkInstance, &mNPhysicalDevices, nullptr);
@@ -547,19 +553,19 @@ RenderSystem::RenderSystem()
 
 	if (surfaceCapabilities.currentExtent.width == UINT32_MAX)
 	{
-		if (windowManager.mWindowWidth < surfaceCapabilities.minImageExtent.width)
+		if (mWindowManager.mWindowWidth < surfaceCapabilities.minImageExtent.width)
 			mSurfaceWidth = surfaceCapabilities.minImageExtent.width;
-		else if (windowManager.mWindowWidth > surfaceCapabilities.maxImageExtent.width)
+		else if (mWindowManager.mWindowWidth > surfaceCapabilities.maxImageExtent.width)
 			mSurfaceWidth = surfaceCapabilities.maxImageExtent.width;
 		else
-			mSurfaceWidth = windowManager.mWindowWidth;
+			mSurfaceWidth = mWindowManager.mWindowWidth;
 
-		if (windowManager.mWindowHeight < surfaceCapabilities.minImageExtent.height)
+		if (mWindowManager.mWindowHeight < surfaceCapabilities.minImageExtent.height)
 			mSurfaceHeight = surfaceCapabilities.minImageExtent.height;
-		else if (windowManager.mWindowHeight > surfaceCapabilities.maxImageExtent.height)
+		else if (mWindowManager.mWindowHeight > surfaceCapabilities.maxImageExtent.height)
 			mSurfaceHeight = surfaceCapabilities.maxImageExtent.height;
 		else
-			mSurfaceHeight = windowManager.mWindowHeight;
+			mSurfaceHeight = mWindowManager.mWindowHeight;
 	}
 	else
 	{
@@ -1179,7 +1185,7 @@ RenderSystem::RenderSystem()
 
 	descriptorSetLayoutCreateInfo.bindingCount = 1;
 	descriptorSetLayoutCreateInfo.pBindings = &descriptorSetLayoutBinding;
-	vkCreateDescriptorSetLayout(mDevice, &descriptorSetLayoutCreateInfo, nullptr, &mUITextDescriptorSetLayout);
+	vkCreateDescriptorSetLayout(mDevice, &descriptorSetLayoutCreateInfo, nullptr, &mImageDescriptorSetLayout);
 
 	// Allocate descriptor sets
 	VkDescriptorSetLayout descriptorSetLayouts[3] = { mDirectionalLightingDescriptorSetLayouts[0], mSkyboxDescriptorSetLayout, mEnvironmentDescriptorSetLayout};
@@ -1305,15 +1311,15 @@ RenderSystem::RenderSystem()
 	shaderModuleCreateInfo.pCode = reinterpret_cast<unsigned int*>(shaderCode.data());
 	vkCreateShaderModule(mDevice, &shaderModuleCreateInfo, nullptr, &mPrefilterFragmentShader);
 
-	shaderCode = readFile("uiTextVertex.spv");
+	shaderCode = readFile("2DQuadVertex.spv");
 	shaderModuleCreateInfo.codeSize = shaderCode.size();
 	shaderModuleCreateInfo.pCode = reinterpret_cast<unsigned int*>(shaderCode.data());
-	vkCreateShaderModule(mDevice, &shaderModuleCreateInfo, nullptr, &mUITextVertexShader);
+	vkCreateShaderModule(mDevice, &shaderModuleCreateInfo, nullptr, &mQuadVertexShader);
 
-	shaderCode = readFile("uiTextFragment.spv");
+	shaderCode = readFile("uiFragment.spv");
 	shaderModuleCreateInfo.codeSize = shaderCode.size();
 	shaderModuleCreateInfo.pCode = reinterpret_cast<unsigned int*>(shaderCode.data());
-	vkCreateShaderModule(mDevice, &shaderModuleCreateInfo, nullptr, &mUITextFragmentShader);
+	vkCreateShaderModule(mDevice, &shaderModuleCreateInfo, nullptr, &mUIFragmentShader);
 	#pragma endregion
 
 	#pragma region Create pipelines
@@ -1643,12 +1649,12 @@ RenderSystem::RenderSystem()
 
 	// Create UI text pipeline
 	shaderStages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
-	shaderStages[0].module = mUITextVertexShader;
+	shaderStages[0].module = mQuadVertexShader;
 	shaderStages[0].pName = "main";
 	shaderStages[0].pSpecializationInfo = nullptr;
 
 	shaderStages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
-	shaderStages[1].module = mUITextFragmentShader;
+	shaderStages[1].module = mUIFragmentShader;
 	shaderStages[1].pName = "main";
 	shaderStages[1].pSpecializationInfo = nullptr;
 
@@ -1742,11 +1748,11 @@ RenderSystem::RenderSystem()
 	pipelineLayoutCreateInfo.pNext = nullptr;
 	pipelineLayoutCreateInfo.flags = 0;
 	pipelineLayoutCreateInfo.setLayoutCount = 1;
-	pipelineLayoutCreateInfo.pSetLayouts = &mUITextDescriptorSetLayout;
+	pipelineLayoutCreateInfo.pSetLayouts = &mImageDescriptorSetLayout;
 	pipelineLayoutCreateInfo.pushConstantRangeCount = 2;
-	VkPushConstantRange pushConstants[2] = { { VK_SHADER_STAGE_VERTEX_BIT, 0, 16 }, { VK_SHADER_STAGE_FRAGMENT_BIT, 16, 28 } };
+	VkPushConstantRange pushConstants[2] = { { VK_SHADER_STAGE_VERTEX_BIT, 0, 16 }, { VK_SHADER_STAGE_FRAGMENT_BIT, 16, 32 } };
 	pipelineLayoutCreateInfo.pPushConstantRanges = pushConstants;
-	vkCreatePipelineLayout(mDevice, &pipelineLayoutCreateInfo, nullptr, &mUITextPipelineLayout);
+	vkCreatePipelineLayout(mDevice, &pipelineLayoutCreateInfo, nullptr, &mUIPipelineLayout);
 
 	pipelineCreateInfo.stageCount = 2;
 	pipelineCreateInfo.pStages = shaderStages;
@@ -1759,12 +1765,12 @@ RenderSystem::RenderSystem()
 	pipelineCreateInfo.pDepthStencilState = &depthStencilState;
 	pipelineCreateInfo.pColorBlendState = &blendState;
 	pipelineCreateInfo.pDynamicState = &dynamicState;
-	pipelineCreateInfo.layout = mUITextPipelineLayout;
+	pipelineCreateInfo.layout = mUIPipelineLayout;
 	pipelineCreateInfo.renderPass = mMainRenderPass;
 	pipelineCreateInfo.subpass = 2;
 	pipelineCreateInfo.basePipelineHandle = VK_NULL_HANDLE;
 	pipelineCreateInfo.basePipelineIndex = 0;
-	vkCreateGraphicsPipelines(mDevice, VK_NULL_HANDLE, 1, &pipelineCreateInfo, nullptr, &mUITextPipeline);
+	vkCreateGraphicsPipelines(mDevice, VK_NULL_HANDLE, 1, &pipelineCreateInfo, nullptr, &mUIPipeline);
 	#pragma endregion
 
 	#pragma region Create command buffer
@@ -2344,6 +2350,10 @@ RenderSystem::~RenderSystem()
 	mMeshManager.unsubscribeRemovedEvent(&mMeshRemovedCallback);
 	mDirectionalLightManager.unsubscribeAddedEvent(&mDirectionalLightAddedCallback);
 	mDirectionalLightManager.unsubscribeRemovedEvent(&mDirectionalLightRemovedCallback);
+	mUITextManager.unsubscribeAddedEvent(&mUITextAddedCallback);
+	mUITextManager.unsubscribeRemovedEvent(&mUITextRemovedCallback);
+	mUIButtonManager.unsubscribeAddedEvent(&mUIButtonAddedCallback);
+	mUIButtonManager.unsubscribeRemovedEvent(&mUIButtonRemovedCallback);
 
 	vkDestroySemaphore(mDevice, mRenderComplete, nullptr);
 	vkDestroySemaphore(mDevice, mImageAvailable, nullptr);
@@ -2353,12 +2363,12 @@ RenderSystem::~RenderSystem()
 	vkDestroyBuffer(mDevice, mCubeVertexBuffer, nullptr);
 	vkFreeCommandBuffers(mDevice, mCommandPool, 1, &mCommandBuffer);
 	vkDestroyCommandPool(mDevice, mCommandPool, nullptr);
-	vkDestroyPipeline(mDevice, mUITextPipeline, nullptr);
+	vkDestroyPipeline(mDevice, mUIPipeline, nullptr);
 	vkDestroyPipeline(mDevice, mPrefilterPipeline, nullptr);
 	vkDestroyPipeline(mDevice, mConvolutePipeline, nullptr);
 	vkDestroyPipeline(mDevice, mSkyboxPipeline, nullptr);
 	vkDestroyPipeline(mDevice, mDirectionalPipeline, nullptr);
-	vkDestroyPipelineLayout(mDevice, mUITextPipelineLayout, nullptr);
+	vkDestroyPipelineLayout(mDevice, mUIPipelineLayout, nullptr);
 	vkDestroyPipelineLayout(mDevice, mPrefilterPipelineLayout, nullptr);
 	vkDestroyPipelineLayout(mDevice, mConvolutePipelineLayout, nullptr);
 	vkDestroyPipelineLayout(mDevice, mSkyboxPipelineLayout, nullptr);
@@ -2371,11 +2381,11 @@ RenderSystem::~RenderSystem()
 	vkDestroyShaderModule(mDevice, mSkyboxVertexShader, nullptr);
 	vkDestroyShaderModule(mDevice, mFragmentShader, nullptr);
 	vkDestroyShaderModule(mDevice, mVertexShader, nullptr);
-	vkDestroyShaderModule(mDevice, mUITextVertexShader, nullptr);
-	vkDestroyShaderModule(mDevice, mUITextFragmentShader, nullptr);
+	vkDestroyShaderModule(mDevice, mQuadVertexShader, nullptr);
+	vkDestroyShaderModule(mDevice, mUIFragmentShader, nullptr);
 	VkDescriptorSet descriptorSets[3] = { mCameraDescriptorSet, mSkyboxDescriptorSet, mEnvironmentDescriptorSet };
 	vkFreeDescriptorSets(mDevice, mDescriptorPool, 3, descriptorSets);
-	vkDestroyDescriptorSetLayout(mDevice, mUITextDescriptorSetLayout, nullptr);
+	vkDestroyDescriptorSetLayout(mDevice, mImageDescriptorSetLayout, nullptr);
 	vkDestroyDescriptorSetLayout(mDevice, mEnvironmentDescriptorSetLayout, nullptr);
 	vkDestroyDescriptorSetLayout(mDevice, mSkyboxDescriptorSetLayout, nullptr);
 	for (unsigned int i = 0; i < sizeof(mDirectionalLightingDescriptorSetLayouts) / sizeof(VkDescriptorSetLayout); i++)
@@ -2466,6 +2476,69 @@ void RenderSystem::UITextAdded(const Entity& entity)
 void RenderSystem::UITextRemoved(const Entity& entity)
 {
 	mUITextIDs.erase(std::find(mUITextIDs.begin(), mUITextIDs.end(), entity.ID()));
+}
+
+void RenderSystem::UIButtonAdded(const Entity& entity)
+{
+	UIButton& uiButton = entity.getComponent<UIButton>();
+
+	// Create descriptor sets
+	VkDescriptorSet sets[3];
+
+	VkDescriptorSetAllocateInfo descriptorSetAllocateInfo = {};
+	descriptorSetAllocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+	descriptorSetAllocateInfo.pNext = nullptr;
+	descriptorSetAllocateInfo.descriptorPool = mDescriptorPool;
+	descriptorSetAllocateInfo.descriptorSetCount = 1;
+	descriptorSetAllocateInfo.pSetLayouts = &mImageDescriptorSetLayout;
+	vkAllocateDescriptorSets(mDevice, &descriptorSetAllocateInfo, &sets[0]);
+	vkAllocateDescriptorSets(mDevice, &descriptorSetAllocateInfo, &sets[1]);
+	vkAllocateDescriptorSets(mDevice, &descriptorSetAllocateInfo, &sets[2]);
+
+	VkDescriptorImageInfo imageInfos[3] = {};
+	imageInfos[0].sampler = uiButton._unpressedTexture->mSampler;
+	imageInfos[0].imageView = uiButton._unpressedTexture->mImageView;
+	imageInfos[0].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+	imageInfos[1].sampler = uiButton._canpressTexture->mSampler;
+	imageInfos[1].imageView = uiButton._canpressTexture->mImageView;
+	imageInfos[1].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+	imageInfos[2].sampler = uiButton._pressedTexture->mSampler;
+	imageInfos[2].imageView = uiButton._pressedTexture->mImageView;
+	imageInfos[2].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+	VkWriteDescriptorSet descriptorSetWrites[3] = {};
+	descriptorSetWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	descriptorSetWrites[0].pNext = nullptr;
+	descriptorSetWrites[0].dstBinding = 0;
+	descriptorSetWrites[0].dstArrayElement = 0;
+	descriptorSetWrites[0].descriptorCount = 1;
+	descriptorSetWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	descriptorSetWrites[0].pBufferInfo = nullptr;
+	descriptorSetWrites[0].pTexelBufferView = nullptr;
+	descriptorSetWrites[2] = descriptorSetWrites[1] = descriptorSetWrites[0];
+	descriptorSetWrites[0].dstSet = sets[0];
+	descriptorSetWrites[0].pImageInfo = &imageInfos[0];
+	descriptorSetWrites[1].dstSet = sets[1];
+	descriptorSetWrites[1].pImageInfo = &imageInfos[1];
+	descriptorSetWrites[2].dstSet = sets[2];
+	descriptorSetWrites[2].pImageInfo = &imageInfos[2];
+
+	vkUpdateDescriptorSets(mDevice, 3, descriptorSetWrites, 0, nullptr);
+
+	uiButton._unpressedDescriptorSet = sets[0];
+	uiButton._canpressDescriptorSet = sets[1];
+	uiButton._pressedDescriptorSet = sets[2];
+	mUIButtonIDs.push_back(entity.ID());
+}
+
+void RenderSystem::UIButtonRemoved(const Entity& entity)
+{
+	UIButton& uiButton = entity.getComponent<UIButton>();
+
+	VkDescriptorSet descriptorSets[3] = { uiButton._unpressedDescriptorSet, uiButton._canpressDescriptorSet, uiButton._pressedDescriptorSet };
+	vkFreeDescriptorSets(mDevice, mDescriptorPool, 3, descriptorSets);
+
+	mUIButtonIDs.erase(std::find(mUIButtonIDs.begin(), mUIButtonIDs.end(), entity.ID()));
 }
 
 void RenderSystem::meshTransformChanged(Transform& transform) const
@@ -2598,9 +2671,13 @@ void RenderSystem::cameraViewChanged(const Transform& transform, const Camera& c
 
 void RenderSystem::update()
 {
+	/* TEMPORARY FIX: FONT MUST BE LOADED BEFORE RENDER PASS */
 	const Font* font = nullptr;
 	if (!mUITextIDs.empty())
 		font = &FontManager::instance().getFont(mUITextManager.getComponent(mUITextIDs[0]).font.c_str());
+
+	glm::vec2 cursor = mWindowManager.cursorPosition();
+	cursor = 2.0f * glm::vec2(cursor.x / mSurfaceWidth, cursor.y / mSurfaceHeight) - glm::vec2(1.0f);
 
 	vkBeginCommandBuffer(mCommandBuffer, &mCommandBufferBeginInfo);
 
@@ -2648,12 +2725,49 @@ void RenderSystem::update()
 	// Render UI
 	vkCmdNextSubpass(mCommandBuffer, VK_SUBPASS_CONTENTS_INLINE);
 
-	vkCmdBindPipeline(mCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, mUITextPipeline);
+	vkCmdBindPipeline(mCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, mUIPipeline);
 
 	vkCmdBindVertexBuffers(mCommandBuffer, 0, 1, &mUIQuadVertexBuffer, &zeroOffset);
 
-	WindowManager& windowManager = WindowManager::instance();
-	
+	// Buttons
+	unsigned int text = false;
+	vkCmdPushConstants(mCommandBuffer, mUIPipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 28, sizeof(unsigned int), &text);
+
+	for (const EntityID& entity : mUIButtonIDs)
+	{
+		UIButton& uiButton = mUIButtonManager.getComponent(entity);
+
+		vkCmdPushConstants(mCommandBuffer, mUIPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(glm::vec2), &uiButton.position);
+		vkCmdPushConstants(mCommandBuffer, mUIPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 8, sizeof(glm::vec2), &uiButton.extent);
+		vkCmdPushConstants(mCommandBuffer, mUIPipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 16, sizeof(glm::vec3), &uiButton.colour);
+
+		if (cursor.x > uiButton.position.x && cursor.x < uiButton.position.x + uiButton.extent.x && cursor.y < uiButton.position.y && cursor.y > uiButton.position.y - uiButton.extent.y)
+		{
+			if (mWindowManager.mouseButton())
+			{
+				if (!uiButton._pressed)
+					uiButton.callback();
+				uiButton._pressed = true;
+
+				vkCmdBindDescriptorSets(mCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, mUIPipelineLayout, 0, 1, &uiButton._pressedDescriptorSet, 0, nullptr);
+			}
+			else
+			{
+				uiButton._pressed = false;
+
+				vkCmdBindDescriptorSets(mCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, mUIPipelineLayout, 0, 1, &uiButton._canpressDescriptorSet, 0, nullptr);
+			}
+		}
+		else
+			vkCmdBindDescriptorSets(mCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, mUIPipelineLayout, 0, 1, &uiButton._unpressedDescriptorSet, 0, nullptr);
+
+		vkCmdDraw(mCommandBuffer, 4, 1, 0, 0);
+	}
+
+	// Text
+	text = true;
+	vkCmdPushConstants(mCommandBuffer, mUIPipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 28, sizeof(unsigned int), &text);
+
 	for (const EntityID& entity : mUITextIDs)
 	{
 		UIText& uiText = mUITextManager.getComponent(entity);
@@ -2665,19 +2779,19 @@ void RenderSystem::update()
 
 			if (uiText.text[i] != 32)
 			{
-				glm::vec2 tempGlyphPosition(glyphPosition.x + (float(glyph.bearing.x) / float(windowManager.mWindowWidth)) * uiText.scale, glyphPosition.y - (float(glyph.size.y - glyph.bearing.y) / float(windowManager.mWindowHeight)) * uiText.scale);
-				glm::vec2 glyphScale((float(glyph.size.x) * uiText.scale) / float(windowManager.mWindowWidth), (float(glyph.size.y) * uiText.scale) / float(windowManager.mWindowHeight));
+				glm::vec2 tempGlyphPosition(glyphPosition.x + (float(glyph.bearing.x) / float(mSurfaceWidth)) * uiText.scale, glyphPosition.y - (float(glyph.size.y - glyph.bearing.y) / float(mSurfaceHeight)) * uiText.scale);
+				glm::vec2 glyphSize((float(glyph.size.x) * uiText.scale) / float(mSurfaceWidth), (float(glyph.size.y) * uiText.scale) / float(mSurfaceHeight));
 
-				vkCmdPushConstants(mCommandBuffer, mUITextPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(glm::vec2), &tempGlyphPosition);
-				vkCmdPushConstants(mCommandBuffer, mUITextPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 8, sizeof(glm::vec2), &glyphScale);
-				vkCmdPushConstants(mCommandBuffer, mUITextPipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 16, sizeof(glm::vec3), &uiText.colour);
+				vkCmdPushConstants(mCommandBuffer, mUIPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(glm::vec2), &tempGlyphPosition);
+				vkCmdPushConstants(mCommandBuffer, mUIPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 8, sizeof(glm::vec2), &glyphSize);
+				vkCmdPushConstants(mCommandBuffer, mUIPipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 16, sizeof(glm::vec3), &uiText.colour);
 
-				vkCmdBindDescriptorSets(mCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, mUITextPipelineLayout, 0, 1, &glyph.descriptorSet, 0, nullptr);
+				vkCmdBindDescriptorSets(mCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, mUIPipelineLayout, 0, 1, &glyph.descriptorSet, 0, nullptr);
 
 				vkCmdDraw(mCommandBuffer, 4, 1, 0, 0);
 			}
 
-			glyphPosition.x += ((glyph.advance >> 6) / float(windowManager.mWindowWidth)) * uiText.scale;
+			glyphPosition.x += ((glyph.advance >> 6) / float(mWindowManager.mWindowWidth)) * uiText.scale;
 		}
 	}
 
@@ -2742,6 +2856,8 @@ void RenderSystem::setSkybox(const Cubemap* cubemap)
 	vkUpdateDescriptorSets(mDevice, 2, descriptorSetWrites, 0, nullptr);
 	#pragma endregion
 
+	/* --== RENDER LIGHTING MAPS ==-- */
+
 	VkSubmitInfo submitInfo = {};
 	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 	submitInfo.pNext = nullptr;
@@ -2757,7 +2873,7 @@ void RenderSystem::setSkybox(const Cubemap* cubemap)
 
 	vkCmdBindVertexBuffers(mCommandBuffer, 0, 1, &mCubeVertexBuffer, &zeroOffset);
 
-	// CONVOLUTE RENDER PASS
+	// Convolute
 	vkCmdBindPipeline(mCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, mConvolutePipeline);
 
 	vkCmdBindDescriptorSets(mCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, mConvolutePipelineLayout, 0, 1, &mEnvironmentDescriptorSet, 0, nullptr);
@@ -2767,14 +2883,12 @@ void RenderSystem::setSkybox(const Cubemap* cubemap)
 	vkCmdDraw(mCommandBuffer, 36, 1, 0, 0);
 
 	vkCmdEndRenderPass(mCommandBuffer);
-	// ---------------------
 
-	// PREFILTER RENDER PASSES
+	// Prefilter
 	vkCmdBindPipeline(mCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, mPrefilterPipeline);
 
 	vkCmdBindDescriptorSets(mCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, mPrefilterPipelineLayout, 0, 1, &mEnvironmentDescriptorSet, 0, nullptr);
 	
-	// Vertex buffer already bound
 	VkRenderPassBeginInfo renderPassBeginInfo = {};
 	renderPassBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
 	renderPassBeginInfo.pNext = nullptr;
@@ -2803,7 +2917,6 @@ void RenderSystem::setSkybox(const Cubemap* cubemap)
 		vkCmdDraw(mCommandBuffer, 36, 1, 0, 0);
 		vkCmdEndRenderPass(mCommandBuffer);
 	}
-	// -----------------------
 
 	vkEndCommandBuffer(mCommandBuffer);
 

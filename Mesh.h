@@ -1,6 +1,16 @@
 #pragma once
 #include "Texture.h"
 #include "Camera.h"
+#include "WindowManager.h"
+
+#define VSYNC true
+
+#define IRRADIANCE_WIDTH_HEIGHT 64
+#define PREFILTER_WIDTH_HEIGHT 720
+
+#define MAX_DIRECTIONAL_LIGHTS 500
+#define MAX_POINT_LIGHTS 500
+#define MAX_SPOT_LIGHTS 500
 
 struct Material
 {
@@ -115,6 +125,44 @@ struct UIText
 	glm::vec3 colour;
 };
 
+typedef std::function<void()> ButtonCallback;
+
+struct UIButton
+{
+	bool _pressed;
+
+	glm::vec2 position;
+	glm::vec2 extent;
+
+	glm::vec3 colour;
+
+	ButtonCallback callback;
+
+	Texture* _unpressedTexture;
+	Texture* _canpressTexture;
+	Texture* _pressedTexture;
+
+	VkDescriptorSet _unpressedDescriptorSet;
+	VkDescriptorSet _canpressDescriptorSet;
+	VkDescriptorSet _pressedDescriptorSet;
+};
+
+struct UIButtonCreateInfo
+{
+	glm::vec2 position;
+	glm::vec2 extent;
+
+	glm::vec3 colour;
+
+	std::string unpressed;
+	std::string canpress;
+	std::string pressed;
+
+	ButtonCallback callback;
+
+	operator UIButton() const;
+};
+
 class RenderSystem
 {
 private:
@@ -125,11 +173,14 @@ private:
 	friend class Cubemap;
 	friend class FontManager;
 
+	WindowManager& mWindowManager = WindowManager::instance();
+
+	ComponentManager<Camera>& mCameraManager = ComponentManager<Camera>::instance();
 	ComponentManager<Transform>& mTransformManager = ComponentManager<Transform>::instance();
 	ComponentManager<Mesh>& mMeshManager = ComponentManager<Mesh>::instance();
 	ComponentManager<DirectionalLight>& mDirectionalLightManager = ComponentManager<DirectionalLight>::instance();
-	ComponentManager<Camera>& mCameraManager = ComponentManager<Camera>::instance();
 	ComponentManager<UIText>& mUITextManager = ComponentManager<UIText>::instance();
+	ComponentManager<UIButton>& mUIButtonManager = ComponentManager<UIButton>::instance();
 
 	const ComponentAddedCallback mTransformAddedCallback = std::bind(&RenderSystem::transformAdded, this, std::placeholders::_1);
 	const ComponentRemovedCallback mTransformRemovedCallback = std::bind(&RenderSystem::transformRemoved, this, std::placeholders::_1);
@@ -138,7 +189,9 @@ private:
 	const ComponentAddedCallback mDirectionalLightAddedCallback = std::bind(&RenderSystem::directionalLightAdded, this, std::placeholders::_1);
 	const ComponentRemovedCallback mDirectionalLightRemovedCallback = std::bind(&RenderSystem::directionalLightRemoved, this, std::placeholders::_1);
 	const ComponentAddedCallback mUITextAddedCallback = std::bind(&RenderSystem::UITextAdded, this, std::placeholders::_1);
-	const ComponentAddedCallback mUITextRemovedCallback = std::bind(&RenderSystem::UITextRemoved, this, std::placeholders::_1);
+	const ComponentRemovedCallback mUITextRemovedCallback = std::bind(&RenderSystem::UITextRemoved, this, std::placeholders::_1);
+	const ComponentAddedCallback mUIButtonAddedCallback = std::bind(&RenderSystem::UIButtonAdded, this, std::placeholders::_1);
+	const ComponentRemovedCallback mUIButtonRemovedCallback = std::bind(&RenderSystem::UIButtonRemoved, this, std::placeholders::_1);
 
 	const TransformChangedCallback mMeshTransformChangedCallback = std::bind(&RenderSystem::meshTransformChanged, this, std::placeholders::_1);
 	const TransformChangedCallback mDirectionalLightTransformChangedCallback = std::bind(&RenderSystem::directionalLightTransformChanged, this, std::placeholders::_1);
@@ -151,6 +204,7 @@ private:
 	std::vector<EntityID> mMeshIDs;
 	std::vector<EntityID> mDirectionalLightIDs;
 	std::vector<EntityID> mUITextIDs;
+	std::vector<EntityID> mUIButtonIDs;
 
 	#pragma region Vulkan resources
 	VkInstance mVkInstance = VK_NULL_HANDLE;
@@ -213,7 +267,7 @@ private:
 	VkDescriptorSetLayout mEnvironmentDescriptorSetLayout = VK_NULL_HANDLE;
 
 	// mUITextPipeline
-	VkDescriptorSetLayout mUITextDescriptorSetLayout = {};
+	VkDescriptorSetLayout mImageDescriptorSetLayout = {};
 	/* ---------------------- */
 	
 	VkDescriptorSet mCameraDescriptorSet = VK_NULL_HANDLE;
@@ -235,20 +289,20 @@ private:
 	VkShaderModule mPrefilterFragmentShader = VK_NULL_HANDLE;
 
 	// UI
-	VkShaderModule mUITextVertexShader = VK_NULL_HANDLE;
-	VkShaderModule mUITextFragmentShader = VK_NULL_HANDLE;
+	VkShaderModule mQuadVertexShader = VK_NULL_HANDLE;
+	VkShaderModule mUIFragmentShader = VK_NULL_HANDLE;
 
 	VkPipelineLayout mDirectionalPipelineLayout = VK_NULL_HANDLE;
 	VkPipelineLayout mSkyboxPipelineLayout = VK_NULL_HANDLE;
 	VkPipelineLayout mConvolutePipelineLayout = VK_NULL_HANDLE;
 	VkPipelineLayout mPrefilterPipelineLayout = VK_NULL_HANDLE;
-	VkPipelineLayout mUITextPipelineLayout = VK_NULL_HANDLE;
+	VkPipelineLayout mUIPipelineLayout = VK_NULL_HANDLE;
 
 	VkPipeline mDirectionalPipeline = VK_NULL_HANDLE;
 	VkPipeline mSkyboxPipeline = VK_NULL_HANDLE;
 	VkPipeline mConvolutePipeline = VK_NULL_HANDLE;
 	VkPipeline mPrefilterPipeline = VK_NULL_HANDLE;
-	VkPipeline mUITextPipeline = VK_NULL_HANDLE;
+	VkPipeline mUIPipeline = VK_NULL_HANDLE;
 
 	VkViewport mPrefilterViewport = {};
 	VkRect2D mPrefilterScissor = {};
@@ -307,8 +361,11 @@ public:
 	void meshRemoved(const Entity& entity);
 	void directionalLightAdded(const Entity& entity);
 	void directionalLightRemoved(const Entity& entity);
+
 	void UITextAdded(const Entity& entity);
 	void UITextRemoved(const Entity& entity);
+	void UIButtonAdded(const Entity& entity);
+	void UIButtonRemoved(const Entity& entity);
 
 	void meshTransformChanged(Transform& transform) const;
 	void directionalLightTransformChanged(Transform& transform) const;

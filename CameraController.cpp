@@ -40,7 +40,7 @@ void CameraControllerSystem::componentRemoved(const Entity& entity)
 		mEntityIDs.erase(iterator);
 }
 
-void CameraControllerSystem::update(const float& deltaTime)
+void CameraControllerSystem::update(const double& deltaTime)
 {
 	bool wDown = mWindowManager.keyDown(W);
 	bool sDown = mWindowManager.keyDown(S);
@@ -60,17 +60,17 @@ void CameraControllerSystem::update(const float& deltaTime)
 		if (cameraController.movement)
 		{
 			if (wDown)
-				transform.translate(transform.worldDirection() * cameraController.movementSpeed * deltaTime);
+				transform.translate(transform.worldDirection() * cameraController.movementSpeed * (float)deltaTime);
 			if (sDown)
-				transform.translate(transform.worldDirection(glm::vec3(0.0f, 0.0f, 1.0f)) * cameraController.movementSpeed * deltaTime);
+				transform.translate(transform.worldDirection(glm::vec3(0.0f, 0.0f, 1.0f)) * cameraController.movementSpeed * (float)deltaTime);
 			if (aDown)
-				transform.translate(transform.worldDirection(glm::vec3(-1.0f, 0.0f, 0.0f)) * cameraController.movementSpeed * deltaTime);
+				transform.translate(transform.worldDirection(glm::vec3(-1.0f, 0.0f, 0.0f)) * cameraController.movementSpeed * (float)deltaTime);
 			if (dDown)
-				transform.translate(transform.worldDirection(glm::vec3(1.0f, 0.0f, 0.0f)) * cameraController.movementSpeed * deltaTime);
+				transform.translate(transform.worldDirection(glm::vec3(1.0f, 0.0f, 0.0f)) * cameraController.movementSpeed * (float)deltaTime);
 		}
 
 		if (cameraController.pitch)
-			transform.rotate(-cursorDelta.y * cameraController.mouseSensitivity, transform.direction(glm::vec3(1.0f, 0.0f, 0.0f)));
+			transform.rotate(cursorDelta.y * cameraController.mouseSensitivity, transform.direction(glm::vec3(1.0f, 0.0f, 0.0f)));
 			
 		if(cameraController.yaw)
 			transform.rotate(-cursorDelta.x * cameraController.mouseSensitivity, glm::vec3(0.0f, 1.0f, 0.0f));

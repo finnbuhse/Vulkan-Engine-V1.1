@@ -4,6 +4,8 @@
 #include <vector>
 #include <functional>
 
+#define DEFAULT_DISABLE_CURSOR true
+
 enum Key : unsigned int { A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z, Numeric0, Numeric1, Numeric2, Numeric3, Numeric4, Numeric5, Numeric6, Numeric7, Numeric8, Numeric9,
 	Space, LeftBracket, RightBracket, Semicolon, Apostrophe, Backslash, Slash, Comma, Dot, COUNT, UNKNOWN };
 
@@ -39,8 +41,12 @@ public:
 	bool windowClosed() const;
 	void pollEvents() const;
 
+	void enableCursor() const;
+	void disableCursor() const;
+
 	bool keyDown(const Key& key) const;
 	bool mouseButton() const;
+
 	glm::vec2 cursorPosition() const;
 
 	void subscribeKeyPressEvent(const Key& key, const KeyCallback* callback);
@@ -49,8 +55,8 @@ public:
 	void subscribeKeyReleaseEvent(const Key& key, const KeyCallback* callback);
 	void unsubscribeKeyReleaseEvent(const Key& key, const KeyCallback* callback);
 
-	void subscribeMouseButtonEvent(const MouseButtonCallback* callback);
-	void unsubscribeMouseButtonEvent(const MouseButtonCallback* callback);
+	void subscribeMousePressedEvent(const MouseButtonCallback* callback);
+	void unsubscribeMousePressedEvent(const MouseButtonCallback* callback);
 	
 	void subscribeCursorMovedEvent(const CursorMovedCallback* callback);
 	void unsubscribeCursorMovedEvent(const CursorMovedCallback* callback);

@@ -254,8 +254,11 @@ WindowManager::WindowManager(const char* windowTitle, const unsigned int& window
 	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 	mWindow = glfwCreateWindow(windowWidth, windowHeight, windowTitle, nullptr, nullptr);
 	assert(("[ERROR] Window creation failed", mWindow != nullptr));
+
+	glfwSetCursorPos(mWindow, mWindowWidth / 2, mWindowHeight / 2);
 	
-	glfwSetInputMode(mWindow, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+    if(DEFAULT_DISABLE_CURSOR)
+		glfwSetInputMode(mWindow, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
 	glfwSetKeyCallback(mWindow, keyCallback);
 	glfwSetMouseButtonCallback(mWindow, mouseButtonCallback);
@@ -281,6 +284,21 @@ bool WindowManager::windowClosed() const
 void WindowManager::pollEvents() const
 {
 	glfwPollEvents();
+}
+
+#include <iostream>
+
+void WindowManager::enableCursor() const
+{
+	//double cursorX, cursorY;
+	//glfwGetCursorPos(mWindow, &cursorX, &cursorY);
+	glfwSetInputMode(mWindow, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+	//glfwSetCursorPos(mWindow, (unsigned int)cursorX % mWindowWidth, (unsigned int)cursorY % mWindowHeight);
+}
+
+void WindowManager::disableCursor() const
+{
+	glfwSetInputMode(mWindow, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 }
 
 bool WindowManager::keyDown(const Key& key) const
@@ -322,12 +340,12 @@ void WindowManager::unsubscribeKeyReleaseEvent(const Key& key, const KeyCallback
 	callbacks.erase(std::find(callbacks.begin(), callbacks.end(), (KeyCallback*)callback));
 }
 
-void WindowManager::subscribeMouseButtonEvent(const MouseButtonCallback* callback)
+void WindowManager::subscribeMousePressedEvent(const MouseButtonCallback* callback)
 {
 	mMouseButtonCallbacks.push_back((MouseButtonCallback*)callback);
 }
 
-void WindowManager::unsubscribeMouseButtonEvent(const MouseButtonCallback* callback)
+void WindowManager::unsubscribeMousePressedEvent(const MouseButtonCallback* callback)
 {
 	mMouseButtonCallbacks.erase(std::find(mMouseButtonCallbacks.begin(), mMouseButtonCallbacks.end(), callback));
 }

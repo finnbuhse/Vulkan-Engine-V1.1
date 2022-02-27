@@ -38,5 +38,5 @@ public:
 	void componentAdded(const Entity& entity);
 	void componentRemoved(const Entity& entity);
 
-	void update(const float& deltaTime);
+	void update(const double& deltaTime);
 };

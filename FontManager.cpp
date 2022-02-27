@@ -269,7 +269,7 @@ const Font& FontManager::getFont(const char* filename)
 			descriptorSetAllocateInfo.pNext = nullptr;
 			descriptorSetAllocateInfo.descriptorPool = renderSystem.mDescriptorPool;
 			descriptorSetAllocateInfo.descriptorSetCount = 1;
-			descriptorSetAllocateInfo.pSetLayouts = &renderSystem.mUITextDescriptorSetLayout;
+			descriptorSetAllocateInfo.pSetLayouts = &renderSystem.mImageDescriptorSetLayout;
 			vkAllocateDescriptorSets(renderSystem.mDevice, &descriptorSetAllocateInfo, &glyph->descriptorSet);
 
 			VkDescriptorImageInfo imageInfo = {};
