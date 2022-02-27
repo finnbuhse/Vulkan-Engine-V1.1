@@ -41,4 +41,8 @@ For each of these libraries, you will need to add their include directories, and
 
 24/02/2022
 - Fixed cleaning of projectiles shot by GunWeapon.
-- Added UIText component to provide means for user interface.
+- Added UIText component.
+
+26/02/2022
+- Added Transform2D component.
+- Added UIButton component.
