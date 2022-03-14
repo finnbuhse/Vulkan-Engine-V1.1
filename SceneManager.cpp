@@ -7,7 +7,7 @@ SceneManager& SceneManager::instance()
 	return instance;
 }
 
-void SceneManager::destroy()
+void SceneManager::destroyScene()
 {
 	for (const EntityID& entityID : mSceneEntityIDs)
 	{
@@ -49,4 +49,32 @@ void SceneManager::addEntity(const Entity& entity, const bool& children)
 		for (unsigned int i = 0; i < transform.childrenIDs.length; i++)
 			addEntity(Entity(transform.childrenIDs[i]));
 	}
+}
+
+void SceneManager::saveScene(const char* filename)
+{
+	std::vector<char> result;
+	std::vector<char> data;
+	
+	unsigned int nParentEntities;
+	for (unsigned int i = 0; i < mSceneEntityIDs.size(); i++)
+	{
+		Transform& transform = mTransformManager.getComponent(mSceneEntityIDs[i]);
+		if(transform.parentID == 0)
+		{
+			data = serialize(Entity(mSceneEntityIDs[i]));
+			result.insert(result.end(), data.begin(), data.end());
+			nParentEntities++;
+		}
+	}
+	
+	data = serialize(nParentEntities);
+	result.insert(result.begin(), data.begin(), data.end());
+	
+	writeFile(filename, result);
+}
+
+void SceneManager::loadScene(const char* filename, const bool& destroyCurrent)
+{
+	std::vector<char> scene = readFile(filename);
 }
