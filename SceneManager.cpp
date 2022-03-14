@@ -54,7 +54,7 @@ void SceneManager::addEntity(const Entity& entity, const bool& children)
 void SceneManager::saveScene(const char* filename)
 {
 	std::vector<char> result;
-	std::vector<char> data;
+	std::vector<char> vecData;
 	
 	unsigned int nParentEntities;
 	for (unsigned int i = 0; i < mSceneEntityIDs.size(); i++)
@@ -62,19 +62,48 @@ void SceneManager::saveScene(const char* filename)
 		Transform& transform = mTransformManager.getComponent(mSceneEntityIDs[i]);
 		if(transform.parentID == 0)
 		{
-			data = serialize(Entity(mSceneEntityIDs[i]));
-			result.insert(result.end(), data.begin(), data.end());
+			vecData = serialize(Entity(mSceneEntityIDs[i]));
+			std::vector<char> tempVecData = serialize((unsigned int)vecData.size());
+			
+			result.insert(result.end(), tempVecData.begin(), tempVecData.end());
+			result.insert(result.end(), vecData.begin(), vecData.end());
 			nParentEntities++;
 		}
 	}
 	
 	data = serialize(nParentEntities);
-	result.insert(result.begin(), data.begin(), data.end());
+	result.insert(result.begin(), vecData.begin(), vecData.end());
 	
 	writeFile(filename, result);
 }
 
 void SceneManager::loadScene(const char* filename, const bool& destroyCurrent)
 {
-	std::vector<char> scene = readFile(filename);
+	if(destroyCurrent)
+		destroyScene();
+	
+	std::vector<char> vecData = readFile(filename);
+	
+	const char* p = vecData.data();
+	unsigned int begin = 0;
+	unsigned int size = sizeof(unsigned int);
+	
+	unsigned int nParentEntities;
+	deserialize(std::vector<char>(p, p + size), nParentEntities);
+	begin += size;
+	
+	for (unsigned int i = 0; i < nParentEntities; i++)
+	{
+		size = sizeof(unsigned int);
+		
+		unsigned int entitySize;
+		deserialize(std::vector<char>(p + begin, p + begin + size), entitySize);
+		begin += size;
+		
+		size = entitySize;
+		
+		Entity entity;
+		deserialize(std::vector<char>(p + begin, p + begin + size), entity);
+		addEntity(entity);
+	}
 }
