@@ -19,4 +19,6 @@ public:
 	void destroyEntity(const Entity& entity, const bool& children = true);
 
 	void addEntity(const Entity& entity, const bool& children = true);
+	
+	void loadScene(const char* filename, const bool& destroyCurrent = true);
 };
