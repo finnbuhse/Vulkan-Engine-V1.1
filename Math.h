@@ -4,6 +4,10 @@
 
 #define PI 3.1415926536
 
+float roundUpToMultiple(const float& x, const float& multiple);
+
+float roundDownToMultiple(const float& x, const float& multiple);
+
 template <typename T>
 T lerp(const T& start, const T& end, const T& progress)
 {

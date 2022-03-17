@@ -4,8 +4,10 @@
 #include "glm/glm.hpp"
 #include "glm/gtc/quaternion.hpp"
 
+void print(const glm::vec2& vec2);
 void print(const glm::vec3& vec3);
 void print(const glm::quat& quat);
+void print(const glm::mat3& matrix);
 void print(const glm::mat4& matrix);
 
 struct Transform;

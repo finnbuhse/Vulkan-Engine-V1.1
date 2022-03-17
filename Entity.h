@@ -17,6 +17,7 @@ private:
 
 	static std::vector<EntityID> queuedIDs; // Technically operates like a stack.
 	static std::unordered_map<EntityID, Composition> compositions;
+	static std::unordered_map<EntityID, std::string> names;
 
 	EntityID mID;
 
@@ -28,7 +29,7 @@ public:
 	*/
 	static Composition& getCompositionFromID(const EntityID& ID);
 
-	Entity();
+	Entity(const std::string& name = "");
 	
 	/*
 	Construct an entity from an ID.
@@ -47,7 +48,7 @@ public:
 	/*
 	Releases the entity's components. All created entities should be destroyed before the program terminates.
 	*/
-	void destroy() const;
+	void destroy();
 
 	bool operator ==(const Entity& other) const;
 
@@ -60,7 +61,11 @@ public:
 	Gets the composition of the entity. The Composition type is a bitmask indicating which components an entity possesses.
 	\return A reference to the entity's composition. Manually changing an entity's composition is not advised so copying to a seperate Composition is recommended.
 	*/
-	Composition& composition() const;
+	const Composition& composition() const;
+
+	void setName(const std::string& name);
+
+	const std::string& name() const;
 
 	/*
 	Adds a component of type T to the entity. Only one component of each type may be added to an entity.

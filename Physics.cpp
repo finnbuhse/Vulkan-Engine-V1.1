@@ -223,8 +223,8 @@ PhysicsSystem::~PhysicsSystem()
 	cooking->release();
 	physics->release();
 	#ifndef NDEBUG
-	transport->release();
 	pvd->release();
+	transport->release();
 	#endif
 	foundation->release();
 }
@@ -519,7 +519,7 @@ physx::PxRaycastBuffer PhysicsSystem::raycast(const glm::vec3& origin, const glm
 	switch (filter)
 	{
 	case UNDEFINED:
-		filterData.flags |= physx::PxQueryFlag::eSTATIC | physx::PxQueryFlag::eDYNAMIC;
+		filterData.flags |= physx::PxQueryFlag::eSTATIC | physx::PxQueryFlag::eDYNAMIC | physx::PxQueryFlag::eANY_HIT;
 	case STATIC:
 		filterData.flags |= physx::PxQueryFlag::eSTATIC;
 		break;
@@ -530,6 +530,6 @@ physx::PxRaycastBuffer PhysicsSystem::raycast(const glm::vec3& origin, const glm
 	}
 
 	physx::PxRaycastBuffer hit;
-	scene->raycast(physx::PxVec3(origin.x, origin.y, origin.z), physx::PxVec3(direction.x, direction.y, direction.z), distance, hit, physx::PxHitFlag::eDEFAULT, filterData);
+	scene->raycast(physx::PxVec3(origin.x, origin.y, origin.z), physx::PxVec3(direction.x, direction.y, direction.z), distance, hit, physx::PxHitFlag::eDEFAULT | physx::PxHitFlag::eMODIFIABLE_FLAGS, filterData);
 	return hit;
 }

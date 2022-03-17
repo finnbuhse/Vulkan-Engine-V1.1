@@ -60,4 +60,14 @@ public:
 	
 	void subscribeCursorMovedEvent(const CursorMovedCallback* callback);
 	void unsubscribeCursorMovedEvent(const CursorMovedCallback* callback);
+
+	inline const unsigned int& getWindowWidth() const
+	{
+		return mWindowWidth;
+	}
+
+	inline const unsigned int& getWindowHeight() const
+	{
+		return mWindowHeight;
+	}
 };

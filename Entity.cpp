@@ -3,13 +3,14 @@
 
 std::vector<EntityID> Entity::queuedIDs = { 1 };
 std::unordered_map<EntityID, Composition> Entity::compositions;
+std::unordered_map<EntityID, std::string> Entity::names;
 
 Composition& Entity::getCompositionFromID(const EntityID& ID)
 {
 	return compositions[ID];
 }
 
-Entity::Entity() :
+Entity::Entity(const std::string& name) :
 	mID(queuedIDs.back())
 {
 	queuedIDs.pop_back(); // Remove ID from queue
@@ -18,6 +19,7 @@ Entity::Entity() :
 		queuedIDs.push_back(mID + 1); // So next ID assigned should be 'mID' + 1
 
 	compositions.insert({ mID, 0 });
+	names.insert({ mID, name == "" ? "Entity " + std::to_string(mID) : name });
 }
 
 Entity::Entity(const EntityID& ID) :
@@ -37,7 +39,7 @@ Entity& Entity::operator=(const Entity& other)
 	return *this;
 }
 
-void Entity::destroy() const
+void Entity::destroy()
 {
 	// Remove all components from entity
 	Composition composition = compositions[mID];
@@ -49,8 +51,12 @@ void Entity::destroy() const
 		}
 	}
 
-	compositions.erase(mID); // Remove entity's composition entry in map
+	// Remove entity's entries in maps
+	compositions.erase(mID); 
+	names.erase(mID);
+
 	queuedIDs.push_back(mID); // Add ID to queue to be reused
+	mID = 0;
 }
 
 bool Entity::operator==(const Entity& other) const
@@ -63,9 +69,19 @@ const EntityID Entity::ID() const
 	return mID;
 }
 
-Composition& Entity::composition() const
+const Composition& Entity::composition() const
 {
 	return compositions[mID];
+}
+
+void Entity::setName(const std::string& name)
+{
+	names[mID] = name;
+}
+
+const std::string& Entity::name() const
+{
+	return names[mID];
 }
 
 unsigned int Entity::nbComponents() const
@@ -189,6 +205,18 @@ void destroyChildren(const Entity& entity)
 			child.destroy();
 
 			transform = entity.getComponent<Transform>();
+		}
+	}
+	else if (entity.hasComponent<Transform2D>())
+	{
+		Transform2D& transform = entity.getComponent<Transform2D>();
+		while (transform.childrenIDs.length != 0)
+		{
+			Entity child(transform.childrenIDs[0]);
+			destroyChildren(child);
+			child.destroy();
+
+			transform = entity.getComponent<Transform2D>();
 		}
 	}
 }

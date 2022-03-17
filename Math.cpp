@@ -1,5 +1,15 @@
 #include "Math.h"
 
+float roundUpToMultiple(const float& x, const float& multiple)
+{
+    return ceil(x / multiple) * multiple;
+}
+
+float roundDownToMultiple(const float& x, const float& multiple)
+{
+    return floor(x / multiple) * multiple;
+}
+
 LerpTime::LerpTime(const float& minimum, const float& maximum, const float& duration) : mMinimum(minimum), mMaximum(maximum), mDuration(duration)
 {
 

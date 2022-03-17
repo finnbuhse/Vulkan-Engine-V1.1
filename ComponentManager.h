@@ -67,10 +67,10 @@ public:
 	{
 		assert(("[ERROR] Cannot add component to entity that already possesses a component of that type", mEntityIndexMap.find(entity.ID()) == mEntityIndexMap.end()));
 
-		mEntityIndexMap.insert({ entity.ID(), mComponents.size() }); // Entity ID now relates to the next free index.
+		mEntityIndexMap.insert({ entity.mID, mComponents.size() }); // Entity ID now relates to the next free index.
 		mComponents.push_back(component); // Add component at index.
 
-		entity.composition() |= bit; // Add component's bit to entity's composition.
+		Entity::compositions[entity.mID] |= bit; // Add component's bit to entity's composition.
 
 		// Notify subscribers of 'component added' event.
 		for (ComponentAddedCallback* callback : mComponentAddedCallbacks)
@@ -100,7 +100,7 @@ public:
 		for (ComponentRemovedCallback* callback : mComponentRemovedCallbacks)
 			(*callback)(entity);
 
-		entity.composition() &= ~bit; // Remove component's bit from entity's composition.
+		Entity::compositions[entity.mID] &= ~bit; // Remove component's bit from entity's composition.
 		
 		// Find relation where it's index accesses the last element in 'mComponents', and assign the index to be the index of the component being removed.
 		for (std::unordered_map<EntityID, unsigned int>::iterator it = mEntityIndexMap.begin(); it != mEntityIndexMap.end(); it++)
@@ -144,7 +144,7 @@ public:
 	*/
 	void unsubscribeAddedEvent(const ComponentAddedCallback* callback)
 	{
-		mComponentAddedCallbacks.erase(std::find(mComponentAddedCallbacks.begin(), mComponentAddedCallbacks.end(), callback));
+		mComponentAddedCallbacks.erase(std::find(mComponentAddedCallbacks.begin(), mComponentAddedCallbacks.end(), (ComponentRemovedCallback*)callback));
 	}
 
 	void subscribeRemovedEvent(const ComponentRemovedCallback* callback)
@@ -154,6 +154,6 @@ public:
 
 	void unsubscribeRemovedEvent(const ComponentRemovedCallback* callback)
 	{
-		mComponentRemovedCallbacks.erase(std::find(mComponentRemovedCallbacks.begin(), mComponentRemovedCallbacks.end(), callback));
+		mComponentRemovedCallbacks.erase(std::find(mComponentRemovedCallbacks.begin(), mComponentRemovedCallbacks.end(), (ComponentRemovedCallback*)callback));
 	}
 };

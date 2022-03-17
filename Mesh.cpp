@@ -301,17 +301,25 @@ DirectionalLightCreateInfo::operator DirectionalLight() const
 	return light;
 }
 
+SpriteCreateInfo::operator Sprite()
+{
+	TextureManager& textureManager = TextureManager::instance();
+
+	Sprite sprite;
+	sprite.texture = &textureManager.getTexture({ texture, FORMAT_RGBA });
+
+	return sprite;
+}
+
 UIButtonCreateInfo::operator UIButton() const
 {
 	TextureManager& textureManager = TextureManager::instance();
 
 	UIButton uiButton;
-	uiButton.position = position;
-	uiButton.extent = extent;
 	uiButton.colour = colour;
-	uiButton._unpressedTexture = &textureManager.getTexture({ unpressed, FORMAT_RGBA });
-	uiButton._canpressTexture = &textureManager.getTexture({ canpress, FORMAT_RGBA });
-	uiButton._pressedTexture = &textureManager.getTexture({ pressed, FORMAT_RGBA });
+	uiButton.unpressedTexture = &textureManager.getTexture({ unpressed, FORMAT_RGBA });
+	uiButton.canpressTexture = &textureManager.getTexture({ canpress, FORMAT_RGBA });
+	uiButton.pressedTexture = &textureManager.getTexture({ pressed, FORMAT_RGBA });
 	uiButton.callback = callback;
 
 	return uiButton;
@@ -325,13 +333,21 @@ RenderSystem::RenderSystem()
 	mMeshManager.subscribeRemovedEvent(&mMeshRemovedCallback);
 	mDirectionalLightManager.subscribeAddedEvent(&mDirectionalLightAddedCallback);
 	mDirectionalLightManager.subscribeRemovedEvent(&mDirectionalLightRemovedCallback);
+	mTransform2DManager.subscribeAddedEvent(&mTransform2DAddedCallback);
+	mTransform2DManager.subscribeRemovedEvent(&mTransform2DRemovedCallback);
+	mSpriteManager.subscribeAddedEvent(&mSpriteAddedCallback);
+	mSpriteManager.subscribeRemovedEvent(&mSpriteRemovedCallback);
 	mUITextManager.subscribeAddedEvent(&mUITextAddedCallback);
 	mUITextManager.subscribeRemovedEvent(&mUITextRemovedCallback);
 	mUIButtonManager.subscribeAddedEvent(&mUIButtonAddedCallback);
 	mUIButtonManager.subscribeRemovedEvent(&mUIButtonRemovedCallback);
 
 	mMeshComposition = mTransformManager.bit | mMeshManager.bit;
-	mDirectionalLightComposition = mTransformManager.bit | mDirectionalLightManager.bit; 
+	mDirectionalLightComposition = mTransformManager.bit | mDirectionalLightManager.bit;
+
+	mSpriteComposition = mTransform2DManager.bit | mSpriteManager.bit;
+	mUITextComposition = mTransform2DManager.bit | mUITextManager.bit;
+	mUIButtonComposition = mTransform2DManager.bit | mUIButtonManager.bit;
 
 	mNPrefilterMips = (unsigned int)std::floor(std::log2(PREFILTER_WIDTH_HEIGHT)) + 1;
 
@@ -1750,9 +1766,9 @@ RenderSystem::RenderSystem()
 	pipelineLayoutCreateInfo.setLayoutCount = 1;
 	pipelineLayoutCreateInfo.pSetLayouts = &mImageDescriptorSetLayout;
 	pipelineLayoutCreateInfo.pushConstantRangeCount = 2;
-	VkPushConstantRange pushConstants[2] = { { VK_SHADER_STAGE_VERTEX_BIT, 0, 16 }, { VK_SHADER_STAGE_FRAGMENT_BIT, 16, 32 } };
+	VkPushConstantRange pushConstants[2] = { { VK_SHADER_STAGE_VERTEX_BIT, 0, 64 }, { VK_SHADER_STAGE_FRAGMENT_BIT, 64, 80 } };
 	pipelineLayoutCreateInfo.pPushConstantRanges = pushConstants;
-	vkCreatePipelineLayout(mDevice, &pipelineLayoutCreateInfo, nullptr, &mUIPipelineLayout);
+	vkCreatePipelineLayout(mDevice, &pipelineLayoutCreateInfo, nullptr, &m2DPipelineLayout);
 
 	pipelineCreateInfo.stageCount = 2;
 	pipelineCreateInfo.pStages = shaderStages;
@@ -1765,12 +1781,12 @@ RenderSystem::RenderSystem()
 	pipelineCreateInfo.pDepthStencilState = &depthStencilState;
 	pipelineCreateInfo.pColorBlendState = &blendState;
 	pipelineCreateInfo.pDynamicState = &dynamicState;
-	pipelineCreateInfo.layout = mUIPipelineLayout;
+	pipelineCreateInfo.layout = m2DPipelineLayout;
 	pipelineCreateInfo.renderPass = mMainRenderPass;
 	pipelineCreateInfo.subpass = 2;
 	pipelineCreateInfo.basePipelineHandle = VK_NULL_HANDLE;
 	pipelineCreateInfo.basePipelineIndex = 0;
-	vkCreateGraphicsPipelines(mDevice, VK_NULL_HANDLE, 1, &pipelineCreateInfo, nullptr, &mUIPipeline);
+	vkCreateGraphicsPipelines(mDevice, VK_NULL_HANDLE, 1, &pipelineCreateInfo, nullptr, &m2DPipeline);
 	#pragma endregion
 
 	#pragma region Create command buffer
@@ -1910,24 +1926,23 @@ RenderSystem::RenderSystem()
 	#pragma region Create UI Quad vertex buffer
 	// Create vertex buffer
 	float uiQuadVertices[] = {
-	0.0f, -1.0f, 0.0f,   0.0f, 0.0f,
-	0.0f, 0.0f, 0.0f,   0.0f, 1.0f,
-	1.0f, -1.0f, 0.0f,   1.0f, 0.0f,
-	1.0f, 0.0f, 0.0f,   1.0f, 1.0f
-	};
+	-0.5f, -0.5f, 1.0f,   0.0f, 0.0f,
+	-0.5f,  0.5f, 1.0f,   0.0f, 1.0f,
+	 0.5f, -0.5f, 1.0f,   1.0f, 0.0f,
+	 0.5f,  0.5f, 1.0f,   1.0f, 1.0f };
 
 	bufferRange = sizeof(uiQuadVertices);
 	bufferCreateInfo.size = bufferRange;
 	bufferCreateInfo.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
-	vkCreateBuffer(mDevice, &bufferCreateInfo, nullptr, &mUIQuadVertexBuffer);
+	vkCreateBuffer(mDevice, &bufferCreateInfo, nullptr, &mQuadVertexBuffer);
 
-	vkGetBufferMemoryRequirements(mDevice, mUIQuadVertexBuffer, &memoryRequirements);
+	vkGetBufferMemoryRequirements(mDevice, mQuadVertexBuffer, &memoryRequirements);
 
 	memoryAllocateInfo.allocationSize = memoryRequirements.size;
 	memoryAllocateInfo.memoryTypeIndex = memoryTypeFromProperties(mPhysicalDeviceMemoryProperties, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 	vkAllocateMemory(mDevice, &memoryAllocateInfo, nullptr, &mUIQuadVertexMemory);
 
-	vkBindBufferMemory(mDevice, mUIQuadVertexBuffer, mUIQuadVertexMemory, 0);
+	vkBindBufferMemory(mDevice, mQuadVertexBuffer, mUIQuadVertexMemory, 0);
 
 	bufferCreateInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
 	vkCreateBuffer(mDevice, &bufferCreateInfo, nullptr, &stagingBuffer);
@@ -1952,7 +1967,7 @@ RenderSystem::RenderSystem()
 	copyRegion.srcOffset = 0;
 	copyRegion.dstOffset = 0;
 	copyRegion.size = bufferRange;
-	vkCmdCopyBuffer(mCommandBuffer, stagingBuffer, mUIQuadVertexBuffer, 1, &copyRegion);
+	vkCmdCopyBuffer(mCommandBuffer, stagingBuffer, mQuadVertexBuffer, 1, &copyRegion);
 
 	vkEndCommandBuffer(mCommandBuffer);
 
@@ -2006,9 +2021,11 @@ RenderSystem::RenderSystem()
 	mPresentInfo.swapchainCount = 1;
 	mPresentInfo.pSwapchains = &mSwapchain;
 	mPresentInfo.pResults = nullptr;
+
+	m2DProjection = enlargeMatrix(glm::vec2(2.0f / mSurfaceWidth, 2.0f / mSurfaceHeight));
 }
 
-void RenderSystem::initialize()
+void RenderSystem::start()
 {
 	Texture& brdfLUT = TextureManager::instance().getTexture({ "Images/brdfLUT.png", VK_FORMAT_R8G8B8A8_UNORM });
 	VkDescriptorImageInfo brdfLUTImageInfo = {};
@@ -2336,6 +2353,118 @@ void RenderSystem::removeDirectionalLight(const std::vector<EntityID>::iterator&
 	mDirectionalLightIDs.erase(IDIterator);
 }
 
+void RenderSystem::addSprite(const Entity& entity)
+{
+	Sprite& sprite = entity.getComponent<Sprite>();
+
+    #pragma region Create button resources
+	// Create descriptor set
+	VkDescriptorSetAllocateInfo descriptorSetAllocateInfo = {};
+	descriptorSetAllocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+	descriptorSetAllocateInfo.pNext = nullptr;
+	descriptorSetAllocateInfo.descriptorPool = mDescriptorPool;
+	descriptorSetAllocateInfo.descriptorSetCount = 1;
+	descriptorSetAllocateInfo.pSetLayouts = &mImageDescriptorSetLayout;
+	vkAllocateDescriptorSets(mDevice, &descriptorSetAllocateInfo, &sprite._descriptorSet);
+
+	VkDescriptorImageInfo imageInfo = {};
+	imageInfo.sampler = sprite.texture->mSampler;
+	imageInfo.imageView = sprite.texture->mImageView;
+	imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+	VkWriteDescriptorSet descriptorSetWrite = {};
+	descriptorSetWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	descriptorSetWrite.pNext = nullptr;
+	descriptorSetWrite.dstBinding = 0;
+	descriptorSetWrite.dstArrayElement = 0;
+	descriptorSetWrite.descriptorCount = 1;
+	descriptorSetWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	descriptorSetWrite.pBufferInfo = nullptr;
+	descriptorSetWrite.pTexelBufferView = nullptr;
+	descriptorSetWrite.dstSet = sprite._descriptorSet;
+	descriptorSetWrite.pImageInfo = &imageInfo;
+	vkUpdateDescriptorSets(mDevice, 1, &descriptorSetWrite, 0, nullptr);
+    #pragma endregion
+
+	mSpriteIDs.push_back(entity.ID());
+}
+
+void RenderSystem::removeSprite(const std::vector<EntityID>::iterator& IDIterator)
+{
+	EntityID ID = *IDIterator;
+	Sprite& sprite = mSpriteManager.getComponent(ID);
+	vkFreeDescriptorSets(mDevice, mDescriptorPool, 1, &sprite._descriptorSet);
+
+	mSpriteIDs.erase(std::find(mSpriteIDs.begin(), mSpriteIDs.end(), ID));
+}
+
+void RenderSystem::addUIButton(const Entity& entity)
+{
+	UIButton& uiButton = entity.getComponent<UIButton>();
+
+	#pragma region Create button resources
+	// Create descriptor sets
+	VkDescriptorSet sets[3];
+
+	VkDescriptorSetAllocateInfo descriptorSetAllocateInfo = {};
+	descriptorSetAllocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+	descriptorSetAllocateInfo.pNext = nullptr;
+	descriptorSetAllocateInfo.descriptorPool = mDescriptorPool;
+	descriptorSetAllocateInfo.descriptorSetCount = 1;
+	descriptorSetAllocateInfo.pSetLayouts = &mImageDescriptorSetLayout;
+	vkAllocateDescriptorSets(mDevice, &descriptorSetAllocateInfo, &sets[0]);
+	vkAllocateDescriptorSets(mDevice, &descriptorSetAllocateInfo, &sets[1]);
+	vkAllocateDescriptorSets(mDevice, &descriptorSetAllocateInfo, &sets[2]);
+
+	VkDescriptorImageInfo imageInfos[3] = {};
+	imageInfos[0].sampler = uiButton.unpressedTexture->mSampler;
+	imageInfos[0].imageView = uiButton.unpressedTexture->mImageView;
+	imageInfos[0].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+	imageInfos[1].sampler = uiButton.canpressTexture->mSampler;
+	imageInfos[1].imageView = uiButton.canpressTexture->mImageView;
+	imageInfos[1].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+	imageInfos[2].sampler = uiButton.pressedTexture->mSampler;
+	imageInfos[2].imageView = uiButton.pressedTexture->mImageView;
+	imageInfos[2].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+	VkWriteDescriptorSet descriptorSetWrites[3] = {};
+	descriptorSetWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	descriptorSetWrites[0].pNext = nullptr;
+	descriptorSetWrites[0].dstBinding = 0;
+	descriptorSetWrites[0].dstArrayElement = 0;
+	descriptorSetWrites[0].descriptorCount = 1;
+	descriptorSetWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	descriptorSetWrites[0].pBufferInfo = nullptr;
+	descriptorSetWrites[0].pTexelBufferView = nullptr;
+	descriptorSetWrites[2] = descriptorSetWrites[1] = descriptorSetWrites[0];
+	descriptorSetWrites[0].dstSet = sets[0];
+	descriptorSetWrites[0].pImageInfo = &imageInfos[0];
+	descriptorSetWrites[1].dstSet = sets[1];
+	descriptorSetWrites[1].pImageInfo = &imageInfos[1];
+	descriptorSetWrites[2].dstSet = sets[2];
+	descriptorSetWrites[2].pImageInfo = &imageInfos[2];
+
+	vkUpdateDescriptorSets(mDevice, 3, descriptorSetWrites, 0, nullptr);
+
+	uiButton._unpressedDescriptorSet = sets[0];
+	uiButton._canpressDescriptorSet = sets[1];
+	uiButton._pressedDescriptorSet = sets[2];
+	#pragma endregion
+
+	mUIButtonIDs.push_back(entity.ID());
+}
+
+void RenderSystem::removeUIButton(const std::vector<EntityID>::iterator& IDIterator)
+{
+	EntityID ID = *IDIterator;
+	UIButton& uiButton = mUIButtonManager.getComponent(ID);
+
+	VkDescriptorSet descriptorSets[3] = { uiButton._unpressedDescriptorSet, uiButton._canpressDescriptorSet, uiButton._pressedDescriptorSet };
+	vkFreeDescriptorSets(mDevice, mDescriptorPool, 3, descriptorSets);
+
+	mUIButtonIDs.erase(std::find(mUIButtonIDs.begin(), mUIButtonIDs.end(), ID));
+}
+
 RenderSystem& RenderSystem::instance()
 {
 	static RenderSystem instance;
@@ -2350,6 +2479,8 @@ RenderSystem::~RenderSystem()
 	mMeshManager.unsubscribeRemovedEvent(&mMeshRemovedCallback);
 	mDirectionalLightManager.unsubscribeAddedEvent(&mDirectionalLightAddedCallback);
 	mDirectionalLightManager.unsubscribeRemovedEvent(&mDirectionalLightRemovedCallback);
+	mTransform2DManager.unsubscribeAddedEvent(&mTransform2DAddedCallback);
+	mTransform2DManager.unsubscribeRemovedEvent(&mTransform2DRemovedCallback);
 	mUITextManager.unsubscribeAddedEvent(&mUITextAddedCallback);
 	mUITextManager.unsubscribeRemovedEvent(&mUITextRemovedCallback);
 	mUIButtonManager.unsubscribeAddedEvent(&mUIButtonAddedCallback);
@@ -2358,17 +2489,17 @@ RenderSystem::~RenderSystem()
 	vkDestroySemaphore(mDevice, mRenderComplete, nullptr);
 	vkDestroySemaphore(mDevice, mImageAvailable, nullptr);
 	vkFreeMemory(mDevice, mUIQuadVertexMemory, nullptr);
-	vkDestroyBuffer(mDevice, mUIQuadVertexBuffer, nullptr);
+	vkDestroyBuffer(mDevice, mQuadVertexBuffer, nullptr);
 	vkFreeMemory(mDevice, mCubeVertexMemory, nullptr);
 	vkDestroyBuffer(mDevice, mCubeVertexBuffer, nullptr);
 	vkFreeCommandBuffers(mDevice, mCommandPool, 1, &mCommandBuffer);
 	vkDestroyCommandPool(mDevice, mCommandPool, nullptr);
-	vkDestroyPipeline(mDevice, mUIPipeline, nullptr);
+	vkDestroyPipeline(mDevice, m2DPipeline, nullptr);
 	vkDestroyPipeline(mDevice, mPrefilterPipeline, nullptr);
 	vkDestroyPipeline(mDevice, mConvolutePipeline, nullptr);
 	vkDestroyPipeline(mDevice, mSkyboxPipeline, nullptr);
 	vkDestroyPipeline(mDevice, mDirectionalPipeline, nullptr);
-	vkDestroyPipelineLayout(mDevice, mUIPipelineLayout, nullptr);
+	vkDestroyPipelineLayout(mDevice, m2DPipelineLayout, nullptr);
 	vkDestroyPipelineLayout(mDevice, mPrefilterPipelineLayout, nullptr);
 	vkDestroyPipelineLayout(mDevice, mConvolutePipelineLayout, nullptr);
 	vkDestroyPipelineLayout(mDevice, mSkyboxPipelineLayout, nullptr);
@@ -2468,77 +2599,73 @@ void RenderSystem::directionalLightRemoved(const Entity& entity)
 		removeDirectionalLight(IDIterator);
 }
 
+void RenderSystem::transform2DAdded(const Entity& entity)
+{
+	const Composition& entityComposition = entity.composition();
+	if ((entityComposition & mSpriteComposition) == mSpriteComposition)
+		addSprite(entity);
+	else if ((entityComposition & mUITextComposition) == mUITextComposition)
+		mUITextIDs.push_back(entity.ID());
+	else if ((entityComposition & mUIButtonComposition) == mUIButtonComposition)
+		addUIButton(entity);
+}
+
+void RenderSystem::transform2DRemoved(const Entity& entity)
+{
+	std::vector<EntityID>::iterator IDIterator = std::find(mSpriteIDs.begin(), mSpriteIDs.end(), entity.ID());
+	if (IDIterator != mSpriteIDs.end())
+	{
+		removeSprite(IDIterator);
+		return;
+	}
+	IDIterator = std::find(mUITextIDs.begin(), mUITextIDs.end(), entity.ID());
+	if (IDIterator != mUITextIDs.end())
+	{
+		mUITextIDs.erase(IDIterator);
+		return;
+	}
+	IDIterator = std::find(mUIButtonIDs.begin(), mUIButtonIDs.end(), entity.ID());
+	if (IDIterator != mUIButtonIDs.end())
+		removeUIButton(IDIterator);
+}
+
+void RenderSystem::spriteAdded(const Entity& entity)
+{
+	if ((entity.composition() & mSpriteComposition) == mSpriteComposition)
+		addSprite(entity);
+}
+
+void RenderSystem::spriteRemoved(const Entity& entity)
+{
+	std::vector<EntityID>::iterator IDIterator = std::find(mSpriteIDs.begin(), mSpriteIDs.end(), entity.ID());
+	if (IDIterator != mSpriteIDs.end())
+		removeSprite(IDIterator);
+}
+
 void RenderSystem::UITextAdded(const Entity& entity)
 {
-	mUITextIDs.push_back(entity.ID());
+	if((entity.composition() & mUITextComposition) == mUITextComposition)
+		mUITextIDs.push_back(entity.ID());
 }
 
 void RenderSystem::UITextRemoved(const Entity& entity)
 {
-	mUITextIDs.erase(std::find(mUITextIDs.begin(), mUITextIDs.end(), entity.ID()));
+	std::vector<EntityID>::iterator IDIterator = std::find(mUITextIDs.begin(), mUITextIDs.end(), entity.ID());
+	if(IDIterator != mUITextIDs.end())
+		mUITextIDs.erase(IDIterator);
 }
 
 void RenderSystem::UIButtonAdded(const Entity& entity)
 {
-	UIButton& uiButton = entity.getComponent<UIButton>();
-
-	// Create descriptor sets
-	VkDescriptorSet sets[3];
-
-	VkDescriptorSetAllocateInfo descriptorSetAllocateInfo = {};
-	descriptorSetAllocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-	descriptorSetAllocateInfo.pNext = nullptr;
-	descriptorSetAllocateInfo.descriptorPool = mDescriptorPool;
-	descriptorSetAllocateInfo.descriptorSetCount = 1;
-	descriptorSetAllocateInfo.pSetLayouts = &mImageDescriptorSetLayout;
-	vkAllocateDescriptorSets(mDevice, &descriptorSetAllocateInfo, &sets[0]);
-	vkAllocateDescriptorSets(mDevice, &descriptorSetAllocateInfo, &sets[1]);
-	vkAllocateDescriptorSets(mDevice, &descriptorSetAllocateInfo, &sets[2]);
-
-	VkDescriptorImageInfo imageInfos[3] = {};
-	imageInfos[0].sampler = uiButton._unpressedTexture->mSampler;
-	imageInfos[0].imageView = uiButton._unpressedTexture->mImageView;
-	imageInfos[0].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-	imageInfos[1].sampler = uiButton._canpressTexture->mSampler;
-	imageInfos[1].imageView = uiButton._canpressTexture->mImageView;
-	imageInfos[1].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-	imageInfos[2].sampler = uiButton._pressedTexture->mSampler;
-	imageInfos[2].imageView = uiButton._pressedTexture->mImageView;
-	imageInfos[2].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-
-	VkWriteDescriptorSet descriptorSetWrites[3] = {};
-	descriptorSetWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-	descriptorSetWrites[0].pNext = nullptr;
-	descriptorSetWrites[0].dstBinding = 0;
-	descriptorSetWrites[0].dstArrayElement = 0;
-	descriptorSetWrites[0].descriptorCount = 1;
-	descriptorSetWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-	descriptorSetWrites[0].pBufferInfo = nullptr;
-	descriptorSetWrites[0].pTexelBufferView = nullptr;
-	descriptorSetWrites[2] = descriptorSetWrites[1] = descriptorSetWrites[0];
-	descriptorSetWrites[0].dstSet = sets[0];
-	descriptorSetWrites[0].pImageInfo = &imageInfos[0];
-	descriptorSetWrites[1].dstSet = sets[1];
-	descriptorSetWrites[1].pImageInfo = &imageInfos[1];
-	descriptorSetWrites[2].dstSet = sets[2];
-	descriptorSetWrites[2].pImageInfo = &imageInfos[2];
-
-	vkUpdateDescriptorSets(mDevice, 3, descriptorSetWrites, 0, nullptr);
-
-	uiButton._unpressedDescriptorSet = sets[0];
-	uiButton._canpressDescriptorSet = sets[1];
-	uiButton._pressedDescriptorSet = sets[2];
-	mUIButtonIDs.push_back(entity.ID());
+	if ((entity.composition() & mUIButtonComposition) == mUIButtonComposition)
+		addUIButton(entity);
 }
 
 void RenderSystem::UIButtonRemoved(const Entity& entity)
 {
-	UIButton& uiButton = entity.getComponent<UIButton>();
-
-	VkDescriptorSet descriptorSets[3] = { uiButton._unpressedDescriptorSet, uiButton._canpressDescriptorSet, uiButton._pressedDescriptorSet };
-	vkFreeDescriptorSets(mDevice, mDescriptorPool, 3, descriptorSets);
-
-	mUIButtonIDs.erase(std::find(mUIButtonIDs.begin(), mUIButtonIDs.end(), entity.ID()));
+	std::vector<EntityID>::iterator IDIterator = std::find(mUIButtonIDs.begin(), mUIButtonIDs.end(), entity.ID());
+	if (IDIterator != mUIButtonIDs.end())
+		removeUIButton(IDIterator);
 }
 
 void RenderSystem::meshTransformChanged(Transform& transform) const
@@ -2677,7 +2804,8 @@ void RenderSystem::update()
 		font = &FontManager::instance().getFont(mUITextManager.getComponent(mUITextIDs[0]).font.c_str());
 
 	glm::vec2 cursor = mWindowManager.cursorPosition();
-	cursor = 2.0f * glm::vec2(cursor.x / mSurfaceWidth, cursor.y / mSurfaceHeight) - glm::vec2(1.0f);
+	cursor -= glm::vec2(float(mSurfaceWidth) / 2.0f, float(mSurfaceHeight) / 2.0f);
+	std::vector<ButtonCallback> buttonCallbacks;
 
 	vkBeginCommandBuffer(mCommandBuffer, &mCommandBufferBeginInfo);
 
@@ -2725,73 +2853,112 @@ void RenderSystem::update()
 	// Render UI
 	vkCmdNextSubpass(mCommandBuffer, VK_SUBPASS_CONTENTS_INLINE);
 
-	vkCmdBindPipeline(mCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, mUIPipeline);
+	vkCmdBindPipeline(mCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m2DPipeline);
 
-	vkCmdBindVertexBuffers(mCommandBuffer, 0, 1, &mUIQuadVertexBuffer, &zeroOffset);
+	vkCmdBindVertexBuffers(mCommandBuffer, 0, 1, &mQuadVertexBuffer, &zeroOffset);
+
+	// Sprites
+	unsigned int text = false;
+	vkCmdPushConstants(mCommandBuffer, m2DPipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 76, sizeof(unsigned int), &text);
+	for (const EntityID& entity : mSpriteIDs)
+	{
+		Transform2D& transform = mTransform2DManager.getComponent(entity);
+		Sprite& sprite = mSpriteManager.getComponent(entity);
+
+		glm::mat4 matrix(m2DProjection * transform.matrix);
+		vkCmdPushConstants(mCommandBuffer, m2DPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(glm::mat4), &matrix[0][0]);
+		glm::vec3 colour(1.0f);
+		vkCmdPushConstants(mCommandBuffer, m2DPipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 64, sizeof(glm::vec3), &colour);
+
+		vkCmdBindDescriptorSets(mCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m2DPipelineLayout, 0, 1, &sprite._descriptorSet, 0, nullptr);
+		vkCmdDraw(mCommandBuffer, 4, 1, 0, 0);
+	}
 
 	// Buttons
-	unsigned int text = false;
-	vkCmdPushConstants(mCommandBuffer, mUIPipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 28, sizeof(unsigned int), &text);
-
 	for (const EntityID& entity : mUIButtonIDs)
 	{
+		Transform2D& transform = mTransform2DManager.getComponent(entity);
 		UIButton& uiButton = mUIButtonManager.getComponent(entity);
 
-		vkCmdPushConstants(mCommandBuffer, mUIPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(glm::vec2), &uiButton.position);
-		vkCmdPushConstants(mCommandBuffer, mUIPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 8, sizeof(glm::vec2), &uiButton.extent);
-		vkCmdPushConstants(mCommandBuffer, mUIPipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 16, sizeof(glm::vec3), &uiButton.colour);
+		glm::mat4 matrix(m2DProjection * transform.matrix);
+		vkCmdPushConstants(mCommandBuffer, m2DPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(glm::mat4), &matrix[0][0]);
+		vkCmdPushConstants(mCommandBuffer, m2DPipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 64, sizeof(glm::vec3), &uiButton.colour);
 
-		if (cursor.x > uiButton.position.x && cursor.x < uiButton.position.x + uiButton.extent.x && cursor.y < uiButton.position.y && cursor.y > uiButton.position.y - uiButton.extent.y)
+		bool cursorOnButton = false;
+		if (transform.rotation == 0.0f)
+		{
+			glm::vec2 halfScale = 0.5f * transform.worldScale;
+			cursorOnButton = cursor.x > transform.worldPosition.x - halfScale.x && cursor.x < transform.worldPosition.x + halfScale.x && cursor.y < transform.worldPosition.y + halfScale.y && cursor.y > transform.worldPosition.y - halfScale.y;
+		}
+		else
+		{
+			glm::vec2 A = glm::vec2(transform.matrix * glm::vec3(-0.5f, -0.5f, 1.0f));
+			glm::vec2 B = glm::vec2(transform.matrix * glm::vec3(0.5f, -0.5f, 1.0f));
+			glm::vec2 D = glm::vec2(transform.matrix * glm::vec3(-0.5f, 0.5f, 1.0f));
+
+			glm::vec2 AM = cursor - A;
+			glm::vec2 AB = B - A;
+			glm::vec2 AD = D - A;
+
+			float d1 = glm::dot(AM, AB);
+			float d2 = glm::dot(AM, AD);
+			cursorOnButton = (0.0f < d1 && d1 < glm::dot(AB, AB)) && (0.0f < d2 && d2 < glm::dot(AD, AD));
+		}
+		
+		if (cursorOnButton)
 		{
 			if (mWindowManager.mouseButton())
 			{
 				if (!uiButton._pressed)
-					uiButton.callback();
+					buttonCallbacks.push_back(uiButton.callback);
 				uiButton._pressed = true;
 
-				vkCmdBindDescriptorSets(mCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, mUIPipelineLayout, 0, 1, &uiButton._pressedDescriptorSet, 0, nullptr);
+				vkCmdBindDescriptorSets(mCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m2DPipelineLayout, 0, 1, &uiButton._pressedDescriptorSet, 0, nullptr);
 			}
 			else
 			{
 				uiButton._pressed = false;
 
-				vkCmdBindDescriptorSets(mCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, mUIPipelineLayout, 0, 1, &uiButton._canpressDescriptorSet, 0, nullptr);
+				vkCmdBindDescriptorSets(mCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m2DPipelineLayout, 0, 1, &uiButton._canpressDescriptorSet, 0, nullptr);
 			}
 		}
 		else
-			vkCmdBindDescriptorSets(mCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, mUIPipelineLayout, 0, 1, &uiButton._unpressedDescriptorSet, 0, nullptr);
+			vkCmdBindDescriptorSets(mCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m2DPipelineLayout, 0, 1, &uiButton._unpressedDescriptorSet, 0, nullptr);
 
 		vkCmdDraw(mCommandBuffer, 4, 1, 0, 0);
 	}
 
 	// Text
 	text = true;
-	vkCmdPushConstants(mCommandBuffer, mUIPipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 28, sizeof(unsigned int), &text);
+	vkCmdPushConstants(mCommandBuffer, m2DPipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 76, sizeof(unsigned int), &text);
 
 	for (const EntityID& entity : mUITextIDs)
 	{
+		Transform2D& transform = mTransform2DManager.getComponent(entity);
 		UIText& uiText = mUITextManager.getComponent(entity);
-		glm::vec2 glyphPosition = uiText.position;
 
+		glm::vec2 glyphPosition = transform.worldPosition;
+		glm::mat3 rotMatrix = rotateMatrix(glm::radians(transform.worldRotation));
+		glm::vec2 advanceDirection = transform.rotation == 0 ? glm::vec2(transform.worldScale.x, 0.0f) : glm::vec2(rotMatrix * glm::vec3(transform.worldScale.x, 0.0f, 1.0f));
 		for (unsigned int i = 0; i < uiText.text.size(); i++)
 		{
 			Glyph& glyph = *font->at(uiText.text[i]);
 
 			if (uiText.text[i] != 32)
 			{
-				glm::vec2 tempGlyphPosition(glyphPosition.x + (float(glyph.bearing.x) / float(mSurfaceWidth)) * uiText.scale, glyphPosition.y - (float(glyph.size.y - glyph.bearing.y) / float(mSurfaceHeight)) * uiText.scale);
-				glm::vec2 glyphSize((float(glyph.size.x) * uiText.scale) / float(mSurfaceWidth), (float(glyph.size.y) * uiText.scale) / float(mSurfaceHeight));
+				glm::vec2 glyphSize(float(glyph.size.x) * transform.worldScale.x, float(glyph.size.y) * transform.worldScale.y);
+				glm::vec2 tempGlyphPosition = glyphPosition + glm::vec2(glyphSize.x/2.0f + transform.worldScale.x * float(glyph.bearing.x), -glyphSize.y/2.0f + transform.worldScale.y * float(glyph.size.y - glyph.bearing.y));
+				glm::mat4 transformMatrix(m2DProjection * translateMatrix(tempGlyphPosition) * rotMatrix * enlargeMatrix(glyphSize));
 
-				vkCmdPushConstants(mCommandBuffer, mUIPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(glm::vec2), &tempGlyphPosition);
-				vkCmdPushConstants(mCommandBuffer, mUIPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 8, sizeof(glm::vec2), &glyphSize);
-				vkCmdPushConstants(mCommandBuffer, mUIPipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 16, sizeof(glm::vec3), &uiText.colour);
+				vkCmdPushConstants(mCommandBuffer, m2DPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(glm::mat4), &transformMatrix[0][0]);
+				vkCmdPushConstants(mCommandBuffer, m2DPipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 64, sizeof(glm::vec3), &uiText.colour);
 
-				vkCmdBindDescriptorSets(mCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, mUIPipelineLayout, 0, 1, &glyph.descriptorSet, 0, nullptr);
+				vkCmdBindDescriptorSets(mCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m2DPipelineLayout, 0, 1, &glyph.descriptorSet, 0, nullptr);
 
 				vkCmdDraw(mCommandBuffer, 4, 1, 0, 0);
 			}
 
-			glyphPosition.x += ((glyph.advance >> 6) / float(mWindowManager.mWindowWidth)) * uiText.scale;
+			glyphPosition += float(glyph.advance >> 6) * advanceDirection;
 		}
 	}
 
@@ -2805,6 +2972,9 @@ void RenderSystem::update()
 
 	vkQueueWaitIdle(mGraphicsQueue);
 	vkResetCommandBuffer(mCommandBuffer, 0);
+
+	for (ButtonCallback& callback : buttonCallbacks)
+		callback();
 }
 
 void RenderSystem::setCamera(const Entity& entity)
@@ -2827,8 +2997,8 @@ void RenderSystem::setSkybox(const Cubemap* cubemap)
 {
 	#pragma region Update descriptor set
 	VkDescriptorImageInfo skyboxInfo = {};
-	skyboxInfo.sampler = cubemap->mSampler;/*mIrradianceSampler;*/
-	skyboxInfo.imageView = cubemap->mImageView;/*mIrradianceImageView;*/
+	skyboxInfo.sampler = cubemap->mSampler;
+	skyboxInfo.imageView = cubemap->mImageView;
 	skyboxInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
 	VkWriteDescriptorSet descriptorSetWrites[2] = {};

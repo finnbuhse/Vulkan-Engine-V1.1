@@ -64,9 +64,9 @@ void CameraControllerSystem::update(const double& deltaTime)
 			if (sDown)
 				transform.translate(transform.worldDirection(glm::vec3(0.0f, 0.0f, 1.0f)) * cameraController.movementSpeed * (float)deltaTime);
 			if (aDown)
-				transform.translate(transform.worldDirection(glm::vec3(-1.0f, 0.0f, 0.0f)) * cameraController.movementSpeed * (float)deltaTime);
-			if (dDown)
 				transform.translate(transform.worldDirection(glm::vec3(1.0f, 0.0f, 0.0f)) * cameraController.movementSpeed * (float)deltaTime);
+			if (dDown)
+				transform.translate(transform.worldDirection(glm::vec3(-1.0f, 0.0f, 0.0f)) * cameraController.movementSpeed * (float)deltaTime);
 		}
 
 		if (cameraController.pitch)

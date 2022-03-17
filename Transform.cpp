@@ -1,6 +1,11 @@
 #include "Transform.h"
 #include <iostream>
 
+void print(const glm::vec2& vec2)
+{
+	std::cout << vec2.x << ", " << vec2.y << "\n";
+}
+
 void print(const glm::vec3& vec3)
 {
 	std::cout << vec3.x << ", " << vec3.y << ", " << vec3.z << "\n";
@@ -9,6 +14,20 @@ void print(const glm::vec3& vec3)
 void print(const glm::quat& quat)
 {
 	std::cout << quat.x << ", " << quat.y << ", " << quat.z << ", " << quat.w << "\n";
+}
+
+void print(const glm::mat3& matrix)
+{
+	for (unsigned int i = 0; i < 3; i++)
+	{
+		for (unsigned int j = 0; j < 3; j++)
+		{
+			std::cout << matrix[j][i];
+			if (i < 2 || j < 2)
+				std::cout << ", ";
+		}
+		std::cout << "\n";
+	}
 }
 
 void print(const glm::mat4& matrix)
@@ -133,18 +152,18 @@ glm::mat3 rotateMatrix(const float& angle)
 	glm::mat3 matrix;
 	float cos = glm::cos(angle);
 	float sin = glm::sin(angle);
-	matrix[0] = { cos, -sin, 0 };
-	matrix[1] = { sin, cos, 0 };
-	matrix[2] = { 0, 0, 0 };
+	matrix[0] = { cos, sin, 0 };
+	matrix[1] = { -sin, cos, 0 };
+	matrix[2] = { 0, 0, 1.0f };
 	return matrix;
 }
 
 glm::mat3 enlargeMatrix(const glm::vec2 enlargement)
 {
-	glm::mat3 matrix;
+	glm::mat3 matrix(1.0f);
 	matrix[0] = { enlargement.x, 0, 0 };
 	matrix[1] = { 0, enlargement.y, 0 };
-	matrix[2] = { 0, 0, 0 };
+	matrix[2] = { 0, 0, 1.0f };
 	return matrix;
 }
 
@@ -306,7 +325,7 @@ void TransformSystem::updateTransform2D(const EntityID& entityID) const
 
 		if (transform.positionChanged || transform.rotationChanged || transform.scaleChanged)
 		{
-			transform.matrix = parentTransform.matrix * translateMatrix(transform.position) * rotateMatrix(transform.rotation) * enlargeMatrix(transform.scale);
+			transform.matrix = parentTransform.matrix * translateMatrix(transform.position) * rotateMatrix(glm::radians(transform.rotation)) * enlargeMatrix(transform.scale);
 
 			if (transform.positionChanged)
 			{
@@ -331,7 +350,7 @@ void TransformSystem::updateTransform2D(const EntityID& entityID) const
 	{
 		if (transform.positionChanged || transform.rotationChanged || transform.scaleChanged)
 		{
-			transform.matrix = translateMatrix(transform.position) * rotateMatrix(transform.rotation) * enlargeMatrix(transform.scale);
+			transform.matrix = translateMatrix(transform.position) * rotateMatrix(glm::radians(transform.rotation)) * enlargeMatrix(transform.scale);
 
 			transform.worldPosition = transform.position;
 			transform.worldRotation = transform.rotation;
@@ -408,17 +427,17 @@ void TransformSystem::component2DRemoved(const Entity& entity)
 {
 	Transform2D& transform = entity.getComponent<Transform2D>();
 	if (transform.parentID)
-		mTransformManager.getComponent(transform.parentID).removeChild(entity);
+		mTransform2DManager.getComponent(transform.parentID).removeChild(entity);
 
 	for (unsigned int i = 0; i < transform.childrenIDs.length; i++)
 	{
-		mTransformManager.getComponent(transform.childrenIDs[i]).parentID = NULL;
-		mEntityIDs.push_back(transform.childrenIDs[i]);
+		mTransform2DManager.getComponent(transform.childrenIDs[i]).parentID = NULL;
+		mEntity2DIDs.push_back(transform.childrenIDs[i]);
 	}
 	transform.childrenIDs.free();
 	transform.changedCallbacks.free();
 
-	mEntityIDs.erase(std::find(mEntityIDs.begin(), mEntityIDs.end(), entity.ID()));
+	mEntity2DIDs.erase(std::find(mEntity2DIDs.begin(), mEntity2DIDs.end(), entity.ID()));
 }
 
 void TransformSystem::update() const

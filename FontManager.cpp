@@ -247,7 +247,7 @@ const Font& FontManager::getFont(const char* filename)
 			samplerCreateInfo.anisotropyEnable = VK_TRUE;
 			samplerCreateInfo.maxAnisotropy = renderSystem.mPhysicalDeviceProperties.limits.maxSamplerAnisotropy;
 			samplerCreateInfo.compareEnable = VK_FALSE;
-			samplerCreateInfo.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
+			samplerCreateInfo.borderColor = VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK;
 			samplerCreateInfo.unnormalizedCoordinates = VK_FALSE;
 			result = vkCreateSampler(renderSystem.mDevice, &samplerCreateInfo, nullptr, &glyph->sampler);
 			validateResult(result);

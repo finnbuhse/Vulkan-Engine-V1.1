@@ -16,33 +16,19 @@ void SceneManager::destroyScene()
 	}
 }
 
-Entity SceneManager::createEntity()
+Entity SceneManager::createEntity(const std::string& name)
 {
-	Entity entity;
-	mSceneEntityIDs.push_back(entity.ID());
+	Entity entity(name);
+	addEntity(entity, false);
 	return entity;
-}
-
-void SceneManager::destroyEntity(const Entity& entity, const bool& children)
-{
-	std::vector<EntityID>::iterator it = std::find(mSceneEntityIDs.begin(), mSceneEntityIDs.end(), entity.ID());
-	if (it != mSceneEntityIDs.end())
-		mSceneEntityIDs.erase(it);
-	if (children)
-	{
-		Transform* transform = &entity.getComponent<Transform>();
-		while (transform->childrenIDs.length != 0)
-		{
-			destroyEntity(Entity(transform->childrenIDs[0]));
-			transform = &entity.getComponent<Transform>();
-		}
-	}
-	entity.destroy();
 }
 
 void SceneManager::addEntity(const Entity& entity, const bool& children)
 {
 	mSceneEntityIDs.push_back(entity.ID());
+	for (EntityAddedCallback* callback : mEntityAddedCallbacks)
+		(*callback)(entity);
+
 	if (children)
 	{
 		Transform& transform = entity.getComponent<Transform>();
@@ -51,59 +37,101 @@ void SceneManager::addEntity(const Entity& entity, const bool& children)
 	}
 }
 
-void SceneManager::saveScene(const char* filename)
+void SceneManager::removeEntity(Entity& entity, const bool& children)
+{
+	std::vector<EntityID>::iterator it = std::find(mSceneEntityIDs.begin(), mSceneEntityIDs.end(), entity.ID());
+	if (it != mSceneEntityIDs.end())
+	{
+		mSceneEntityIDs.erase(it);
+		for (EntityRemovedCallback* callback : mEntityRemovedCallbacks)
+			(*callback)(entity);
+	}
+	if (children)
+	{
+		Transform* transform = &entity.getComponent<Transform>();
+		while (transform->childrenIDs.length != 0)
+		{
+			Entity child(transform->childrenIDs[0]);
+			removeEntity(child);
+			transform = &entity.getComponent<Transform>();
+		}
+	}
+	entity.destroy();
+}
+
+void SceneManager::saveScene(const char* filename) const
 {
 	std::vector<char> result;
 	std::vector<char> vecData;
-	
-	unsigned int nParentEntities;
+
+	unsigned int nParentEntities = 0;
 	for (unsigned int i = 0; i < mSceneEntityIDs.size(); i++)
 	{
 		Transform& transform = mTransformManager.getComponent(mSceneEntityIDs[i]);
-		if(transform.parentID == 0)
+		if (transform.parentID == 0)
 		{
 			vecData = serialize(Entity(mSceneEntityIDs[i]));
 			std::vector<char> tempVecData = serialize((unsigned int)vecData.size());
-			
+
 			result.insert(result.end(), tempVecData.begin(), tempVecData.end());
 			result.insert(result.end(), vecData.begin(), vecData.end());
 			nParentEntities++;
 		}
 	}
-	
-	data = serialize(nParentEntities);
+
+	vecData = serialize(nParentEntities);
 	result.insert(result.begin(), vecData.begin(), vecData.end());
-	
+
 	writeFile(filename, result);
 }
 
 void SceneManager::loadScene(const char* filename, const bool& destroyCurrent)
 {
-	if(destroyCurrent)
+	if (destroyCurrent)
 		destroyScene();
-	
+
 	std::vector<char> vecData = readFile(filename);
-	
+
 	const char* p = vecData.data();
 	unsigned int begin = 0;
 	unsigned int size = sizeof(unsigned int);
-	
+
 	unsigned int nParentEntities;
 	deserialize(std::vector<char>(p, p + size), nParentEntities);
 	begin += size;
-	
+
 	for (unsigned int i = 0; i < nParentEntities; i++)
 	{
 		size = sizeof(unsigned int);
-		
+
 		unsigned int entitySize;
 		deserialize(std::vector<char>(p + begin, p + begin + size), entitySize);
 		begin += size;
-		
+
 		size = entitySize;
-		
+
 		Entity entity;
 		deserialize(std::vector<char>(p + begin, p + begin + size), entity);
 		addEntity(entity);
 	}
+}
+
+void SceneManager::subscribeEntityAddedEvent(EntityAddedCallback* callback)
+{
+	mEntityAddedCallbacks.push_back(callback);
+}
+
+void SceneManager::unsubscribeEntityAddedEvent(EntityAddedCallback* callback)
+{
+	mEntityAddedCallbacks.erase(std::find(mEntityAddedCallbacks.begin(), mEntityAddedCallbacks.end(), callback));
+}
+
+void SceneManager::subscribeEntityRemovedEvent(EntityRemovedCallback* callback)
+{
+	mEntityRemovedCallbacks.push_back(callback);
+}
+
+void SceneManager::unsubscribeEntityRemovedEvent(EntityRemovedCallback* callback)
+{
+	mEntityRemovedCallbacks.erase(std::find(mEntityRemovedCallbacks.begin(), mEntityRemovedCallbacks.end(), callback));
 }
