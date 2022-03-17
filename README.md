@@ -46,3 +46,10 @@ For each of these libraries, you will need to add their include directories, and
 26/02/2022
 - Added Transform2D component.
 - Added UIButton component.
+
+17/03/2022
+- Added Sprite component
+- Added capability to rotate sprites/text/buttons.
+- Fixed certain button callbacks causing crashes due to render pass.
+- Added capability to subscribe to the scene manager to recieve notification of entities being added/removed from the scene.
+- Added getWindowWidth, getWindowHeight, enableCursor and disableCursor subroutines to the WindowManager class.
