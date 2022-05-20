@@ -53,3 +53,7 @@ For each of these libraries, you will need to add their include directories, and
 - Fixed certain button callbacks causing crashes due to render pass.
 - Added capability to subscribe to the scene manager to recieve notification of entities being added/removed from the scene.
 - Added getWindowWidth, getWindowHeight, enableCursor and disableCursor subroutines to the WindowManager class.
+
+20/05/2022
+- Added toggle buttons.
+- Added further mouse support to WindowManager.
