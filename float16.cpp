@@ -1,5 +1,7 @@
 #include "float16.h"
 #include <cstring>
+/* From https://stackoverflow.com/questions/1659440/32-bit-to-16-bit-floating-point-conversion
+in an answer from ProjectPhysX */
 
 float16 floatToFloat16(const float& f)
 {

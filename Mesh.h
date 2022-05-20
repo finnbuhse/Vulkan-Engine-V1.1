@@ -3,7 +3,7 @@
 #include "Camera.h"
 #include "WindowManager.h"
 
-#define VSYNC false
+#define VSYNC true
 
 #define IRRADIANCE_WIDTH_HEIGHT 64
 #define PREFILTER_WIDTH_HEIGHT 720
@@ -12,6 +12,7 @@
 #define MAX_POINT_LIGHTS 500
 #define MAX_SPOT_LIGHTS 500
 
+// PBR Material
 struct Material
 {
 	Texture* albedo;
@@ -42,29 +43,37 @@ struct Vertex
 
 struct Mesh
 {
+	// Number of vertices and indices in the vertex and index buffers, can be assigned to but buffers will not be reallocated until reallocateBuffers() is called
 	unsigned int nVertices;
 	unsigned int nIndices;
+
 	Material material;
 
-	VkBuffer vertexBuffer;
-	VkDeviceMemory vertexMemory;
-	VkBuffer vertexStagingBuffer;
-	VkDeviceMemory vertexStagingMemory;
-	Vertex* vertices;
+	// Vertex buffer
+	VkBuffer _vertexBuffer;
+	VkDeviceMemory _vertexMemory;
+	VkBuffer _vertexStagingBuffer;
+	VkDeviceMemory _vertexStagingMemory;
 
-	VkBuffer indexBuffer;
-	VkDeviceMemory indexMemory;
-	VkBuffer indexStagingBuffer;
-	VkDeviceMemory indexStagingMemory;
+	// Index buffer
+	VkBuffer _indexBuffer;
+	VkDeviceMemory _indexMemory;
+	VkBuffer _indexStagingBuffer;
+	VkDeviceMemory _indexStagingMemory;
+
+	// CPU side buffers storing vertices and indices, elements can be overwritten and assigned to, but changes will not take effect until updateBuffers() is called
+	Vertex* vertices;
 	unsigned int* indices;
 
-	VkBuffer uniformBuffer; // Stores model and normal matrices.
-	VkDeviceMemory uniformMemory;
-	VkBuffer uniformStagingBuffer;
-	VkDeviceMemory uniformStagingMemory;
-	unsigned char* uniformData;
+	// Uniform buffer stores model and normal matrices
+	VkBuffer _uniformBuffer; 
+	VkDeviceMemory _uniformMemory;
+	VkBuffer _uniformStagingBuffer;
+	VkDeviceMemory _uniformStagingMemory;
+	unsigned char* _uniformData;
 
-	VkDescriptorSet descriptorSet;
+	// Descriptor set references uniform data i.e uniform buffer & material textures for shader to use
+	VkDescriptorSet _descriptorSet;
 
 	/*
 	Reallocates GPU and CPU side buffers to accommodate [nVertices] vertices and [nIndices] indices. Useful if you wish to change the number of vertices and/or indices.
@@ -78,14 +87,14 @@ struct Mesh
 	void updateBuffers();
 
 	/*
-	Updates information regarding which textures to use for the mesh. Call this procedure to make changes to the material take effect.
+	Updates which textures are used by the mesh. Call this procedure to make changes to the material take effect.
 	*/
 	void updateMaterial();
 
 	/*
 	\return An array of positions for each vertex in the mesh.
 	*/
-	std::vector<glm::vec3> positions();
+	std::vector<glm::vec3> positions() const;
 };
 
 template <>
@@ -96,15 +105,19 @@ void deserialize(const std::vector<char>& vecData, Mesh& write);
 
 struct DirectionalLight
 {
-	VkBuffer uniformBuffer; // Stores colour and direction.
-	VkDeviceMemory uniformMemory;
-	VkBuffer uniformStagingBuffer;
-	VkDeviceMemory uniformStagingMemory;
-	unsigned char* uniformData;
+	// Uniform buffer stores colour and direction.
+	VkBuffer _uniformBuffer;
+	VkDeviceMemory _uniformMemory;
+	VkBuffer _uniformStagingBuffer;
+	VkDeviceMemory _uniformStagingMemory;
+	unsigned char* _uniformData;
 
-	VkDescriptorSet descriptorSet;
+	VkDescriptorSet _descriptorSet;
 
-	glm::vec3 lastColour;
+	// Store last frames state, allows render system to detect change and update the uniform buffer
+	glm::vec3 _lastColour;
+
+	// Can be freely assigned to in order to change the light's colour
 	glm::vec3 colour;
 };
 
@@ -112,11 +125,15 @@ struct DirectionalLightCreateInfo
 {
 	glm::vec3 colour;
 
+	// 'Constructs' DirectionalLight
 	operator DirectionalLight() const;
 };
 
 struct Sprite
 {
+	unsigned int width;
+	unsigned int height;
+
 	Texture* texture;
 
 	VkDescriptorSet _descriptorSet;
@@ -124,8 +141,12 @@ struct Sprite
 
 struct SpriteCreateInfo
 {
+	unsigned int width;
+	unsigned int height;
+
 	std::string texture;
 
+	// 'Constructs' Sprite
 	operator Sprite();
 };
 
@@ -140,9 +161,11 @@ typedef std::function<void()> ButtonCallback;
 
 struct UIButton
 {
+	unsigned int width;
+	unsigned int height;
 	glm::vec3 colour;
-
 	ButtonCallback callback;
+	bool toggle;
 
 	Texture* unpressedTexture;
 	Texture* canpressTexture;
@@ -153,10 +176,14 @@ struct UIButton
 	VkDescriptorSet _pressedDescriptorSet;
 
 	bool _pressed;
+	bool _underCursor;
 };
 
 struct UIButtonCreateInfo
 {
+	unsigned int width;
+	unsigned int height;
+
 	std::string unpressed;
 	std::string canpress;
 	std::string pressed;
@@ -165,6 +192,9 @@ struct UIButtonCreateInfo
 
 	ButtonCallback callback;
 
+	bool toggle = false;
+
+	// 'Constructs' Button
 	operator UIButton() const;
 };
 
@@ -179,7 +209,7 @@ private:
 	friend class FontManager;
 
 	WindowManager& mWindowManager = WindowManager::instance();
-
+	
 	ComponentManager<Camera>& mCameraManager = ComponentManager<Camera>::instance();
 	ComponentManager<Transform>& mTransformManager = ComponentManager<Transform>::instance();
 	ComponentManager<Mesh>& mMeshManager = ComponentManager<Mesh>::instance();
@@ -189,6 +219,7 @@ private:
 	ComponentManager<UIText>& mUITextManager = ComponentManager<UIText>::instance();
 	ComponentManager<UIButton>& mUIButtonManager = ComponentManager<UIButton>::instance();
 
+	// Callbacks called externally to ensure the render system is up to date
 	const ComponentAddedCallback mTransformAddedCallback = std::bind(&RenderSystem::transformAdded, this, std::placeholders::_1);
 	const ComponentRemovedCallback mTransformRemovedCallback = std::bind(&RenderSystem::transformRemoved, this, std::placeholders::_1);
 	const ComponentAddedCallback mMeshAddedCallback = std::bind(&RenderSystem::meshAdded, this, std::placeholders::_1);
@@ -209,6 +240,9 @@ private:
 	const std::function<void(const Camera&)> mProjectionChangedCallback = std::bind(&RenderSystem::cameraProjectionChanged, this, std::placeholders::_1);
 	const std::function<void(const Transform&, const Camera&)> mViewChangedCallback = std::bind(&RenderSystem::cameraViewChanged, this, std::placeholders::_1, std::placeholders::_2);
 
+	const MouseButtonCallback mLMBPressedCallback = std::bind(&RenderSystem::LMBPressed, this);
+
+	// Compositions of entities that are included in the render system
 	Composition mMeshComposition;
 	Composition mDirectionalLightComposition;
 
@@ -216,6 +250,7 @@ private:
 	Composition mUITextComposition;
 	Composition mUIButtonComposition;
 
+	// Dynamic arrays containing entities included in the render system
 	std::vector<EntityID> mMeshIDs;
 	std::vector<EntityID> mDirectionalLightIDs;
 	std::vector<EntityID> mSpriteIDs;
@@ -306,7 +341,7 @@ private:
 
 	// UI
 	VkShaderModule mQuadVertexShader = VK_NULL_HANDLE;
-	VkShaderModule mUIFragmentShader = VK_NULL_HANDLE;
+	VkShaderModule m2DFragmentShader = VK_NULL_HANDLE;
 
 	VkPipelineLayout mDirectionalPipelineLayout = VK_NULL_HANDLE;
 	VkPipelineLayout mSkyboxPipelineLayout = VK_NULL_HANDLE;
@@ -332,12 +367,13 @@ private:
 	VkDeviceMemory mCubeVertexMemory = VK_NULL_HANDLE;
 
 	VkBuffer mQuadVertexBuffer = VK_NULL_HANDLE;
-	VkDeviceMemory mUIQuadVertexMemory = VK_NULL_HANDLE;
+	VkDeviceMemory mQuadVertexMemory = VK_NULL_HANDLE;
 
 	VkSemaphore mImageAvailable = VK_NULL_HANDLE;
 	VkSemaphore mRenderComplete = VK_NULL_HANDLE;
 	VkViewport mViewport = {};
 	VkRect2D mScissor = {};
+
 	VkPipelineStageFlags mWaitFlags = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
 	VkSubmitInfo mRenderSubmitInfo = {};
 	VkPresentInfoKHR mPresentInfo = {};
@@ -352,14 +388,16 @@ private:
 	#pragma endregion
 
 	EntityID mCamera = NULL;
-	glm::mat3 m2DProjection;
+
+	// Used to stretch 2D images by aspect ratio so they are displayed correctly
+	glm::mat4 m2DProjection;
 
 	RenderSystem();
 public:
 	void start();
 
 private:
-	void createMeshBuffers(Mesh& mesh);
+	void allocateMeshBuffers(Mesh& mesh);
 	void addMesh(const Entity& entity);
 	void removeMesh(const std::vector<EntityID>::iterator& IDIterator);
 
@@ -378,6 +416,7 @@ public:
 	RenderSystem(const RenderSystem& copy) = delete;
 	~RenderSystem();
 
+	// Callback subroutines. Should not be used outside of their internal use
 	void transformAdded(const Entity& entity);
 	void transformRemoved(const Entity& entity);
 	void meshAdded(const Entity& entity);
@@ -402,31 +441,78 @@ public:
 	void cameraProjectionChanged(const Camera& camera);
 	void cameraViewChanged(const Transform& transform, const Camera& camera);
 
+	void LMBPressed();
+
+	// Renders scene
 	void update();
 
+	/*
+	Sets the active camera.
+	\param entity: Entity to make the active camera. Must possess a Transform and Camera component.
+	*/
 	void setCamera(const Entity& entity);
+
+	/*
+	Sets the active skybox.
+	\param cubemap: Cubemap to use as the skybox. Used to calculate IBL so HDR cubemaps provide better results.
+	*/
 	void setSkybox(const Cubemap* cubemap);
 };
 
+/*
+Load model from file e.g obj, fbx, etc.
+\param directory: Directory of the file to load.
+\return A root parent entity of the model. Use transforms to traverse the model. 
+*/
 Entity loadModel(const char* directory);
 
+/*
+Retrieves an array of a specific component from the entity and its children.
+\param entity: The parent entity to get components from.
+\return A dynamic array containing pointers to each component.
+*/
 template <typename T>
-std::vector<T*> getComponentsInHierarchy(const Entity& entity)
+std::vector<T*> getComponentsInHierarchy3D(const Entity& entity)
 {
 	std::vector<T*> components;
 	if (entity.hasComponent<T>())
-	{
 		components.push_back(&entity.getComponent<T>());
-	}
-	
+
 	Transform& transform = entity.getComponent<Transform>();
 	for (unsigned int i = 0; i < transform.childrenIDs.length; i++)
 	{
-		std::vector<T*> childComponents = getComponentsInHierarchy<T>(Entity(transform.childrenIDs[i]));
+		std::vector<T*> childComponents = getComponentsInHierarchy3D<T>(Entity(transform.childrenIDs[i]));
 		components.insert(components.end(), childComponents.begin(), childComponents.end());
 	}
 
 	return components;
 }
 
+/*
+Retrieves an array of a specific component from the entity and its children.
+\param entity: The parent entity to get components from.
+\return A dynamic array containing pointers to each component.
+*/
+template <typename T>
+std::vector<T*> getComponentsInHierarchy2D(const Entity& entity)
+{
+	std::vector<T*> components;
+	if (entity.hasComponent<T>())
+		components.push_back(&entity.getComponent<T>());
+
+	Transform2D& transform = entity.getComponent<Transform2D>();
+	for (unsigned int i = 0; i < transform.childrenIDs.length; i++)
+	{
+		std::vector<T*> childComponents = getComponentsInHierarchy2D<T>(Entity(transform.childrenIDs[i]));
+		components.insert(components.end(), childComponents.begin(), childComponents.end());
+	}
+
+	return components;
+}
+
+/*
+Applys a material to an entity and all its children.
+\param model: Parent of entities to apply material to.
+\param material: Material to apply.
+*/
 void applyModelMaterial(const Entity& model, const Material& material);

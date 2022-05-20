@@ -7,7 +7,7 @@
 #include <stdlib.h>
 #include <iostream>
 
-constexpr VkDeviceSize zeroOffset = 0;
+constexpr VkDeviceSize ZERO_OFFSET = 0;
 
 MaterialCreateInfo::operator Material() const
 {
@@ -26,7 +26,7 @@ void Mesh::reallocateBuffers()
 {
 	static RenderSystem& renderSystem = RenderSystem::instance();
 
-	renderSystem.createMeshBuffers(*this);
+	renderSystem.allocateMeshBuffers(*this);
 }
 
 void Mesh::updateBuffers()
@@ -45,10 +45,10 @@ void Mesh::updateBuffers()
 	copyRegion.srcOffset = 0;
 	copyRegion.dstOffset = 0;
 	copyRegion.size = nVertices * sizeof(Vertex);
-	vkCmdCopyBuffer(renderSystem.mCommandBuffer, vertexStagingBuffer, vertexBuffer, 1, &copyRegion);
+	vkCmdCopyBuffer(renderSystem.mCommandBuffer, _vertexStagingBuffer, _vertexBuffer, 1, &copyRegion);
 
 	copyRegion.size = nIndices * sizeof(unsigned int);
-	vkCmdCopyBuffer(renderSystem.mCommandBuffer, indexStagingBuffer, indexBuffer, 1, &copyRegion);
+	vkCmdCopyBuffer(renderSystem.mCommandBuffer, _indexStagingBuffer, _indexBuffer, 1, &copyRegion);
 
 	vkEndCommandBuffer(renderSystem.mCommandBuffer);
 
@@ -102,7 +102,7 @@ void Mesh::updateMaterial()
 	VkWriteDescriptorSet descriptorSetWrites[5] = {};
 	descriptorSetWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
 	descriptorSetWrites[0].pNext = nullptr;
-	descriptorSetWrites[0].dstSet = descriptorSet;
+	descriptorSetWrites[0].dstSet = _descriptorSet;
 	descriptorSetWrites[0].dstBinding = 1;
 	descriptorSetWrites[0].dstArrayElement = 0;
 	descriptorSetWrites[0].descriptorCount = 1;
@@ -113,7 +113,7 @@ void Mesh::updateMaterial()
 
 	descriptorSetWrites[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
 	descriptorSetWrites[1].pNext = nullptr;
-	descriptorSetWrites[1].dstSet = descriptorSet;
+	descriptorSetWrites[1].dstSet = _descriptorSet;
 	descriptorSetWrites[1].dstBinding = 2;
 	descriptorSetWrites[1].dstArrayElement = 0;
 	descriptorSetWrites[1].descriptorCount = 1;
@@ -124,7 +124,7 @@ void Mesh::updateMaterial()
 
 	descriptorSetWrites[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
 	descriptorSetWrites[2].pNext = nullptr;
-	descriptorSetWrites[2].dstSet = descriptorSet;
+	descriptorSetWrites[2].dstSet = _descriptorSet;
 	descriptorSetWrites[2].dstBinding = 3;
 	descriptorSetWrites[2].dstArrayElement = 0;
 	descriptorSetWrites[2].descriptorCount = 1;
@@ -135,7 +135,7 @@ void Mesh::updateMaterial()
 
 	descriptorSetWrites[3].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
 	descriptorSetWrites[3].pNext = nullptr;
-	descriptorSetWrites[3].dstSet = descriptorSet;
+	descriptorSetWrites[3].dstSet = _descriptorSet;
 	descriptorSetWrites[3].dstBinding = 4;
 	descriptorSetWrites[3].dstArrayElement = 0;
 	descriptorSetWrites[3].descriptorCount = 1;
@@ -146,7 +146,7 @@ void Mesh::updateMaterial()
 
 	descriptorSetWrites[4].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
 	descriptorSetWrites[4].pNext = nullptr;
-	descriptorSetWrites[4].dstSet = descriptorSet;
+	descriptorSetWrites[4].dstSet = _descriptorSet;
 	descriptorSetWrites[4].dstBinding = 5;
 	descriptorSetWrites[4].dstArrayElement = 0;
 	descriptorSetWrites[4].descriptorCount = 1;
@@ -158,7 +158,7 @@ void Mesh::updateMaterial()
 	#pragma endregion
 }
 
-std::vector<glm::vec3> Mesh::positions()
+std::vector<glm::vec3> Mesh::positions() const
 {
 	std::vector<glm::vec3> positions;
 	for (unsigned int i = 0; i < nVertices; i++)
@@ -296,7 +296,7 @@ void deserialize(const std::vector<char>& vecData, Mesh& mesh) // Mesh must be a
 DirectionalLightCreateInfo::operator DirectionalLight() const
 {
 	DirectionalLight light;
-	light.lastColour = colour;
+	light._lastColour = colour;
 	light.colour = colour;
 	return light;
 }
@@ -306,6 +306,8 @@ SpriteCreateInfo::operator Sprite()
 	TextureManager& textureManager = TextureManager::instance();
 
 	Sprite sprite;
+	sprite.width = width;
+	sprite.height = height;
 	sprite.texture = &textureManager.getTexture({ texture, FORMAT_RGBA });
 
 	return sprite;
@@ -316,17 +318,23 @@ UIButtonCreateInfo::operator UIButton() const
 	TextureManager& textureManager = TextureManager::instance();
 
 	UIButton uiButton;
+	uiButton.width = width;
+	uiButton.height = height;
 	uiButton.colour = colour;
 	uiButton.unpressedTexture = &textureManager.getTexture({ unpressed, FORMAT_RGBA });
 	uiButton.canpressTexture = &textureManager.getTexture({ canpress, FORMAT_RGBA });
 	uiButton.pressedTexture = &textureManager.getTexture({ pressed, FORMAT_RGBA });
 	uiButton.callback = callback;
+	uiButton.toggle = toggle;
+	uiButton._pressed = false;
+	uiButton._underCursor = false;
 
 	return uiButton;
 }
 
 RenderSystem::RenderSystem()
 {
+	// Subcribe to managers to recieve events
 	mTransformManager.subscribeAddedEvent(&mTransformAddedCallback);
 	mTransformManager.subscribeRemovedEvent(&mTransformRemovedCallback);
 	mMeshManager.subscribeAddedEvent(&mMeshAddedCallback);
@@ -341,7 +349,9 @@ RenderSystem::RenderSystem()
 	mUITextManager.subscribeRemovedEvent(&mUITextRemovedCallback);
 	mUIButtonManager.subscribeAddedEvent(&mUIButtonAddedCallback);
 	mUIButtonManager.subscribeRemovedEvent(&mUIButtonRemovedCallback);
+	mWindowManager.subscribeLMBPressedEvent(&mLMBPressedCallback);
 
+	// Compositions define criteria for entities to be included in the system
 	mMeshComposition = mTransformManager.bit | mMeshManager.bit;
 	mDirectionalLightComposition = mTransformManager.bit | mDirectionalLightManager.bit;
 
@@ -349,12 +359,13 @@ RenderSystem::RenderSystem()
 	mUITextComposition = mTransform2DManager.bit | mUITextManager.bit;
 	mUIButtonComposition = mTransform2DManager.bit | mUIButtonManager.bit;
 
-	mNPrefilterMips = (unsigned int)std::floor(std::log2(PREFILTER_WIDTH_HEIGHT)) + 1;
-
+	// Write constants to shader before compiling
+	// Demonstrates how shaders could be configured and compiled at runtime
 	std::vector<char> fragmentSource = readFile("ShaderSource/shader.frag");
 	writeConstants(fragmentSource, { {"MAX_PREFILTER_LOD", std::to_string(mNPrefilterMips).c_str() }, {"MAX_DIRECTIONAL_LIGHTS", std::to_string(MAX_DIRECTIONAL_LIGHTS).c_str() }, {"MAX_POINT_LIGHTS", std::to_string(MAX_POINT_LIGHTS).c_str() }, {"MAX_SPOT_LIGHTS", std::to_string(MAX_SPOT_LIGHTS).c_str() } });
 	writeFile("ShaderSource/shader.frag", fragmentSource);
 
+	// Compile shaders so user doesn't have to manually compile after each change
 	std::cout << "Compiling shaders..." << std::endl;
 	system("glslangValidator.exe -V ShaderSource/shader.vert -o vertex.spv");
 	system("glslangValidator.exe -V ShaderSource/shader.frag -o fragment.spv");
@@ -371,7 +382,7 @@ RenderSystem::RenderSystem()
 	/* VULKAN CONFIGURATION */
 	const char* layers[1] = { "VK_LAYER_KHRONOS_validation" };
 
-	// *INSTANCE EXTENSIONS ARE NOT CONFIGURABLE, CURRENTLY ONLY REQUIRED ARE USED*
+	// *INSTANCE EXTENSIONS ARE NOT CURRENTLY CONFIGURABLE, ONLY REQUIRED ARE USED*
 
 	const char* deviceExtensions[1] = { VK_KHR_SWAPCHAIN_EXTENSION_NAME };
 
@@ -420,7 +431,7 @@ RenderSystem::RenderSystem()
 	instanceCreateInfo.pApplicationInfo = &applicationInfo;
 	instanceCreateInfo.enabledLayerCount = layers == nullptr ? 0 : sizeof(layers)/sizeof(unsigned char*);
 	instanceCreateInfo.ppEnabledLayerNames = layers;
-	instanceCreateInfo.ppEnabledExtensionNames = glfwGetRequiredInstanceExtensions(&instanceCreateInfo.enabledExtensionCount);
+	instanceCreateInfo.ppEnabledExtensionNames = glfwGetRequiredInstanceExtensions(&instanceCreateInfo.enabledExtensionCount); // Use required instance extensions
 	vkCreateInstance(&instanceCreateInfo, nullptr, &mVkInstance);
 	#pragma endregion
 
@@ -543,6 +554,7 @@ RenderSystem::RenderSystem()
 	#pragma endregion
 
 	#pragma region Create swapchain
+	// Check presenting image format is supported
 	unsigned int nAvailableFormats;
 	vkGetPhysicalDeviceSurfaceFormatsKHR(mPhysicalDevice, mSurface, &nAvailableFormats, nullptr);
 	VkSurfaceFormatKHR* availableFormats = new VkSurfaceFormatKHR[nAvailableFormats];
@@ -560,9 +572,8 @@ RenderSystem::RenderSystem()
 			}
 		}
 	}
-	assert(("[ERROR] Surface format VK_FORMAT_B8G8R8A8_UNORM unsupported", supported));
-
 	delete[] availableFormats;
+	assert(("[ERROR] Surface format VK_FORMAT_B8G8R8A8_UNORM unsupported", supported));
 
 	VkSurfaceCapabilitiesKHR surfaceCapabilities;
 	vkGetPhysicalDeviceSurfaceCapabilitiesKHR(mPhysicalDevice, mSurface, &surfaceCapabilities);
@@ -653,6 +664,7 @@ RenderSystem::RenderSystem()
 	VkImage* swapchainImages = new VkImage[mNSwapchainImages];
 	vkGetSwapchainImagesKHR(mDevice, mSwapchain, &mNSwapchainImages, swapchainImages);
 
+	// Create swapchain image views
 	mSwapchainImageViews = new VkImageView[mNSwapchainImages];
 
 	VkImageViewCreateInfo imageViewCreateInfo;
@@ -667,8 +679,7 @@ RenderSystem::RenderSystem()
 	imageViewCreateInfo.subresourceRange.levelCount = 1;
 	imageViewCreateInfo.subresourceRange.baseArrayLayer = 0;
 	imageViewCreateInfo.subresourceRange.layerCount = 1;
-
-	// image
+	
 	for (unsigned int i = 0; i < mNSwapchainImages; i++)
 	{
 		imageViewCreateInfo.image = swapchainImages[i];
@@ -781,6 +792,8 @@ RenderSystem::RenderSystem()
 	#pragma endregion
 
 	#pragma region Create prefilter cubemap
+	mNPrefilterMips = (unsigned int)std::floor(std::log2(PREFILTER_WIDTH_HEIGHT)) + 1;
+
 	// Create image
 	imageCreateInfo.flags = VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
 	imageCreateInfo.imageType = VK_IMAGE_TYPE_2D;
@@ -805,7 +818,8 @@ RenderSystem::RenderSystem()
 	vkAllocateMemory(mDevice, &memoryAllocateInfo, nullptr, &mPrefilterMemory);
 
 	vkBindImageMemory(mDevice, mPrefilterImage, mPrefilterMemory, 0);
-	// Create image views
+
+	// Create image view for each mip level
 	mPrefilterImageViews = new VkImageView[mNPrefilterMips];
 	for (unsigned int i = 0; i < mNPrefilterMips; i++)
 	{
@@ -821,10 +835,10 @@ RenderSystem::RenderSystem()
 		vkCreateImageView(mDevice, &imageViewCreateInfo, nullptr, &mPrefilterImageViews[i]);
 	}
 
-	// Create image view
+	// Create image view for all mip levels
 	imageViewCreateInfo.image = mPrefilterImage;
 	imageViewCreateInfo.viewType = VK_IMAGE_VIEW_TYPE_CUBE;
-	imageViewCreateInfo.format = VK_FORMAT_R32G32B32A32_SFLOAT; // 3 Channel formats are unsupported by my GPU
+	imageViewCreateInfo.format = VK_FORMAT_R32G32B32A32_SFLOAT;
 	imageViewCreateInfo.components = { VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_B, VK_COMPONENT_SWIZZLE_A };
 	imageViewCreateInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
 	imageViewCreateInfo.subresourceRange.baseMipLevel = 0;
@@ -1035,6 +1049,7 @@ RenderSystem::RenderSystem()
 	#pragma endregion
 
 	#pragma region Create uniform buffer
+	// Stores camera's projection and view matrices aswell as its position
 	unsigned int bufferRange = 2 * sizeof(glm::mat4) + sizeof(glm::vec3);
 	VkBufferCreateInfo bufferCreateInfo = {};
 	bufferCreateInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
@@ -1335,11 +1350,11 @@ RenderSystem::RenderSystem()
 	shaderCode = readFile("uiFragment.spv");
 	shaderModuleCreateInfo.codeSize = shaderCode.size();
 	shaderModuleCreateInfo.pCode = reinterpret_cast<unsigned int*>(shaderCode.data());
-	vkCreateShaderModule(mDevice, &shaderModuleCreateInfo, nullptr, &mUIFragmentShader);
+	vkCreateShaderModule(mDevice, &shaderModuleCreateInfo, nullptr, &m2DFragmentShader);
 	#pragma endregion
 
 	#pragma region Create pipelines
-	// Create main pipeline
+	// Create PBR pipeline
 	VkPipelineShaderStageCreateInfo shaderStages[2] = {};
 	shaderStages[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
 	shaderStages[0].pNext = nullptr;
@@ -1362,23 +1377,24 @@ RenderSystem::RenderSystem()
 	vertexBindingDescription.stride = sizeof(Vertex);
 	vertexBindingDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
 
+	// Defines format of vertex data
 	VkVertexInputAttributeDescription vertexAttributeDescriptions0[4] = {};
-	vertexAttributeDescriptions0[0].location = 0;
+	vertexAttributeDescriptions0[0].location = 0; // Position
 	vertexAttributeDescriptions0[0].binding = 0;
 	vertexAttributeDescriptions0[0].format = VK_FORMAT_R32G32B32_SFLOAT;
 	vertexAttributeDescriptions0[0].offset = 0;
 							   
-	vertexAttributeDescriptions0[1].location = 1;
+	vertexAttributeDescriptions0[1].location = 1; // Normal
 	vertexAttributeDescriptions0[1].binding = 0;
 	vertexAttributeDescriptions0[1].format = VK_FORMAT_R32G32B32_SFLOAT;
 	vertexAttributeDescriptions0[1].offset = sizeof(glm::vec3);
 							   
-	vertexAttributeDescriptions0[2].location = 2;
+	vertexAttributeDescriptions0[2].location = 2; // Tangent
 	vertexAttributeDescriptions0[2].binding = 0;
 	vertexAttributeDescriptions0[2].format = VK_FORMAT_R32G32B32_SFLOAT;
 	vertexAttributeDescriptions0[2].offset = 2 * sizeof(glm::vec3);
 							   
-	vertexAttributeDescriptions0[3].location = 3;
+	vertexAttributeDescriptions0[3].location = 3; // Texture coordinate
 	vertexAttributeDescriptions0[3].binding = 0;
 	vertexAttributeDescriptions0[3].format = VK_FORMAT_R32G32_SFLOAT;
 	vertexAttributeDescriptions0[3].offset = 3 * sizeof(glm::vec3);
@@ -1419,10 +1435,11 @@ RenderSystem::RenderSystem()
 	rasterizationState.depthBiasSlopeFactor = 0;
 	rasterizationState.rasterizerDiscardEnable = VK_FALSE;
 	rasterizationState.polygonMode = VK_POLYGON_MODE_FILL;
-	rasterizationState.cullMode = VK_CULL_MODE_BACK_BIT;
+	rasterizationState.cullMode = VK_CULL_MODE_BACK_BIT; // Cull back faces
 	rasterizationState.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
 	rasterizationState.lineWidth = 1.0f;
 
+	// No multisampling
 	VkPipelineMultisampleStateCreateInfo multisampleState = {};
 	multisampleState.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
 	multisampleState.pNext = nullptr;
@@ -1454,6 +1471,7 @@ RenderSystem::RenderSystem()
 	depthStencilState.minDepthBounds = 0;
 	depthStencilState.maxDepthBounds = 0;
 
+	// No blending
 	VkPipelineColorBlendAttachmentState attachmentBlendState = {};
 	attachmentBlendState.colorWriteMask = 0xf;
 	attachmentBlendState.srcColorBlendFactor = VK_BLEND_FACTOR_ONE;
@@ -1477,6 +1495,7 @@ RenderSystem::RenderSystem()
 	blendState.blendConstants[2] = 1.0f;
 	blendState.blendConstants[3] = 1.0f;
 
+	// Dynamic viewport and scissor to allow for window resizing
 	VkDynamicState dynamicStates[2] = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
 
 	VkPipelineDynamicStateCreateInfo dynamicState = {};
@@ -1526,7 +1545,7 @@ RenderSystem::RenderSystem()
 	vertexBindingDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
 
 	VkVertexInputAttributeDescription vertexAttributeDescription = {};
-	vertexAttributeDescription.location = 0;
+	vertexAttributeDescription.location = 0; // Position
 	vertexAttributeDescription.binding = 0;
 	vertexAttributeDescription.format = VK_FORMAT_R32G32B32_SFLOAT;
 	vertexAttributeDescription.offset = 0;
@@ -1652,7 +1671,7 @@ RenderSystem::RenderSystem()
 	pipelineLayoutCreateInfo.setLayoutCount = 1;
 	pipelineLayoutCreateInfo.pSetLayouts = &mEnvironmentDescriptorSetLayout;
 	pipelineLayoutCreateInfo.pushConstantRangeCount = 1;
-	VkPushConstantRange pushConstant = { VK_SHADER_STAGE_FRAGMENT_BIT, 0, 4 };
+	VkPushConstantRange pushConstant = { VK_SHADER_STAGE_FRAGMENT_BIT, 0, 4 }; // Roughness parameter push constant
 	pipelineLayoutCreateInfo.pPushConstantRanges = &pushConstant;
 	vkCreatePipelineLayout(mDevice, &pipelineLayoutCreateInfo, nullptr, &mPrefilterPipelineLayout);
 
@@ -1663,14 +1682,14 @@ RenderSystem::RenderSystem()
 	pipelineCreateInfo.subpass = 0;
 	vkCreateGraphicsPipelines(mDevice, VK_NULL_HANDLE, 1, &pipelineCreateInfo, nullptr, &mPrefilterPipeline);
 
-	// Create UI text pipeline
+	// Create 2D pipeline - used for sprites, buttons, and text
 	shaderStages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
 	shaderStages[0].module = mQuadVertexShader;
 	shaderStages[0].pName = "main";
 	shaderStages[0].pSpecializationInfo = nullptr;
 
 	shaderStages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
-	shaderStages[1].module = mUIFragmentShader;
+	shaderStages[1].module = m2DFragmentShader;
 	shaderStages[1].pName = "main";
 	shaderStages[1].pSpecializationInfo = nullptr;
 
@@ -1679,12 +1698,12 @@ RenderSystem::RenderSystem()
 	vertexBindingDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
 
 	VkVertexInputAttributeDescription vertexAttributeDescriptions1[2] = {};
-	vertexAttributeDescriptions1[0].location = 0;
+	vertexAttributeDescriptions1[0].location = 0; // Position
 	vertexAttributeDescriptions1[0].binding = 0;
 	vertexAttributeDescriptions1[0].format = VK_FORMAT_R32G32B32_SFLOAT;
 	vertexAttributeDescriptions1[0].offset = 0;
 							   
-	vertexAttributeDescriptions1[1].location = 1;
+	vertexAttributeDescriptions1[1].location = 1; // Texture coordinate
 	vertexAttributeDescriptions1[1].binding = 0;
 	vertexAttributeDescriptions1[1].format = VK_FORMAT_R32G32_SFLOAT;
 	vertexAttributeDescriptions1[1].offset = sizeof(glm::vec3);
@@ -1736,6 +1755,7 @@ RenderSystem::RenderSystem()
 	depthStencilState.minDepthBounds = 0;
 	depthStencilState.maxDepthBounds = 0;
 
+	// Blending
 	attachmentBlendState.blendEnable = VK_TRUE;
 	attachmentBlendState.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;;
 	attachmentBlendState.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
@@ -1766,7 +1786,7 @@ RenderSystem::RenderSystem()
 	pipelineLayoutCreateInfo.setLayoutCount = 1;
 	pipelineLayoutCreateInfo.pSetLayouts = &mImageDescriptorSetLayout;
 	pipelineLayoutCreateInfo.pushConstantRangeCount = 2;
-	VkPushConstantRange pushConstants[2] = { { VK_SHADER_STAGE_VERTEX_BIT, 0, 64 }, { VK_SHADER_STAGE_FRAGMENT_BIT, 64, 80 } };
+	VkPushConstantRange pushConstants[2] = { { VK_SHADER_STAGE_VERTEX_BIT, 0, 64 }, { VK_SHADER_STAGE_FRAGMENT_BIT, 64, 80 } }; // Transform matrix, colour, and text 'mode' push constants
 	pipelineLayoutCreateInfo.pPushConstantRanges = pushConstants;
 	vkCreatePipelineLayout(mDevice, &pipelineLayoutCreateInfo, nullptr, &m2DPipelineLayout);
 
@@ -1926,10 +1946,10 @@ RenderSystem::RenderSystem()
 	#pragma region Create UI Quad vertex buffer
 	// Create vertex buffer
 	float uiQuadVertices[] = {
-	-0.5f, -0.5f, 1.0f,   0.0f, 0.0f,
-	-0.5f,  0.5f, 1.0f,   0.0f, 1.0f,
-	 0.5f, -0.5f, 1.0f,   1.0f, 0.0f,
-	 0.5f,  0.5f, 1.0f,   1.0f, 1.0f };
+	-0.5f, -0.5f, 0.0f,   0.0f, 0.0f,
+	-0.5f,  0.5f, 0.0f,   0.0f, 1.0f,
+	 0.5f, -0.5f, 0.0f,   1.0f, 0.0f,
+	 0.5f,  0.5f, 0.0f,   1.0f, 1.0f };
 
 	bufferRange = sizeof(uiQuadVertices);
 	bufferCreateInfo.size = bufferRange;
@@ -1940,9 +1960,9 @@ RenderSystem::RenderSystem()
 
 	memoryAllocateInfo.allocationSize = memoryRequirements.size;
 	memoryAllocateInfo.memoryTypeIndex = memoryTypeFromProperties(mPhysicalDeviceMemoryProperties, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-	vkAllocateMemory(mDevice, &memoryAllocateInfo, nullptr, &mUIQuadVertexMemory);
+	vkAllocateMemory(mDevice, &memoryAllocateInfo, nullptr, &mQuadVertexMemory);
 
-	vkBindBufferMemory(mDevice, mQuadVertexBuffer, mUIQuadVertexMemory, 0);
+	vkBindBufferMemory(mDevice, mQuadVertexBuffer, mQuadVertexMemory, 0);
 
 	bufferCreateInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
 	vkCreateBuffer(mDevice, &bufferCreateInfo, nullptr, &stagingBuffer);
@@ -2022,7 +2042,7 @@ RenderSystem::RenderSystem()
 	mPresentInfo.pSwapchains = &mSwapchain;
 	mPresentInfo.pResults = nullptr;
 
-	m2DProjection = enlargeMatrix(glm::vec2(2.0f / mSurfaceWidth, 2.0f / mSurfaceHeight));
+	m2DProjection = glm::scale(glm::mat4(1.0f), glm::vec3(2.0f / mSurfaceWidth, 2.0f / mSurfaceHeight, 1.0f));
 }
 
 void RenderSystem::start()
@@ -2048,20 +2068,21 @@ void RenderSystem::start()
 	vkUpdateDescriptorSets(mDevice, 1, &descriptorSetWrite, 0, nullptr);
 }
 
-void RenderSystem::createMeshBuffers(Mesh& mesh)
+void RenderSystem::allocateMeshBuffers(Mesh& mesh)
 {
-	if (mesh.vertexBuffer || mesh.indexBuffer)
+	// Free buffers if they have been allocated
+	if (mesh._vertexBuffer || mesh._indexBuffer)
 	{
-		vkFreeMemory(mDevice, mesh.vertexMemory, nullptr);
-		vkDestroyBuffer(mDevice, mesh.vertexBuffer, nullptr);
-		vkUnmapMemory(mDevice, mesh.vertexStagingMemory);
-		vkFreeMemory(mDevice, mesh.vertexStagingMemory, nullptr);
-		vkDestroyBuffer(mDevice, mesh.vertexStagingBuffer, nullptr);
-		vkFreeMemory(mDevice, mesh.indexMemory, nullptr);
-		vkDestroyBuffer(mDevice, mesh.indexBuffer, nullptr);
-		vkUnmapMemory(mDevice, mesh.indexStagingMemory);
-		vkFreeMemory(mDevice, mesh.indexStagingMemory, nullptr);
-		vkDestroyBuffer(mDevice, mesh.indexStagingBuffer, nullptr);
+		vkFreeMemory(mDevice, mesh._vertexMemory, nullptr);
+		vkDestroyBuffer(mDevice, mesh._vertexBuffer, nullptr);
+		vkUnmapMemory(mDevice, mesh._vertexStagingMemory);
+		vkFreeMemory(mDevice, mesh._vertexStagingMemory, nullptr);
+		vkDestroyBuffer(mDevice, mesh._vertexStagingBuffer, nullptr);
+		vkFreeMemory(mDevice, mesh._indexMemory, nullptr);
+		vkDestroyBuffer(mDevice, mesh._indexBuffer, nullptr);
+		vkUnmapMemory(mDevice, mesh._indexStagingMemory);
+		vkFreeMemory(mDevice, mesh._indexStagingMemory, nullptr);
+		vkDestroyBuffer(mDevice, mesh._indexStagingBuffer, nullptr);
 	}
 
 	unsigned int localMemoryType = memoryTypeFromProperties(mPhysicalDeviceMemoryProperties, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
@@ -2077,60 +2098,60 @@ void RenderSystem::createMeshBuffers(Mesh& mesh)
 	bufferCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 	bufferCreateInfo.queueFamilyIndexCount = 0;
 	bufferCreateInfo.pQueueFamilyIndices = nullptr;
-	vkCreateBuffer(mDevice, &bufferCreateInfo, nullptr, &mesh.vertexBuffer);
+	vkCreateBuffer(mDevice, &bufferCreateInfo, nullptr, &mesh._vertexBuffer);
 
 	VkMemoryRequirements memoryRequirements;
-	vkGetBufferMemoryRequirements(mDevice, mesh.vertexBuffer, &memoryRequirements);
+	vkGetBufferMemoryRequirements(mDevice, mesh._vertexBuffer, &memoryRequirements);
 
 	VkMemoryAllocateInfo memoryAllocateInfo = {};
 	memoryAllocateInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
 	memoryAllocateInfo.pNext = nullptr;
 	memoryAllocateInfo.allocationSize = memoryRequirements.size;
 	memoryAllocateInfo.memoryTypeIndex = localMemoryType;
-	vkAllocateMemory(mDevice, &memoryAllocateInfo, nullptr, &mesh.vertexMemory);
+	vkAllocateMemory(mDevice, &memoryAllocateInfo, nullptr, &mesh._vertexMemory);
 
-	vkBindBufferMemory(mDevice, mesh.vertexBuffer, mesh.vertexMemory, 0);
+	vkBindBufferMemory(mDevice, mesh._vertexBuffer, mesh._vertexMemory, 0);
 
 	// Create vertex staging buffer
 	bufferCreateInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
-	vkCreateBuffer(mDevice, &bufferCreateInfo, nullptr, &mesh.vertexStagingBuffer);
+	vkCreateBuffer(mDevice, &bufferCreateInfo, nullptr, &mesh._vertexStagingBuffer);
 
-	vkGetBufferMemoryRequirements(mDevice, mesh.vertexStagingBuffer, &memoryRequirements);
+	vkGetBufferMemoryRequirements(mDevice, mesh._vertexStagingBuffer, &memoryRequirements);
 
 	memoryAllocateInfo.allocationSize = memoryRequirements.size;
 	memoryAllocateInfo.memoryTypeIndex = hostMemoryType;
-	vkAllocateMemory(mDevice, &memoryAllocateInfo, nullptr, &mesh.vertexStagingMemory);
+	vkAllocateMemory(mDevice, &memoryAllocateInfo, nullptr, &mesh._vertexStagingMemory);
 
-	vkBindBufferMemory(mDevice, mesh.vertexStagingBuffer, mesh.vertexStagingMemory, 0);
+	vkBindBufferMemory(mDevice, mesh._vertexStagingBuffer, mesh._vertexStagingMemory, 0);
 
-	vkMapMemory(mDevice, mesh.vertexStagingMemory, 0, bufferCreateInfo.size, 0, (void**)&mesh.vertices);
+	vkMapMemory(mDevice, mesh._vertexStagingMemory, 0, bufferCreateInfo.size, 0, (void**)&mesh.vertices);
 
 	// Create index buffer
 	bufferCreateInfo.size = mesh.nIndices * sizeof(unsigned int);
 	bufferCreateInfo.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
-	vkCreateBuffer(mDevice, &bufferCreateInfo, nullptr, &mesh.indexBuffer);
+	vkCreateBuffer(mDevice, &bufferCreateInfo, nullptr, &mesh._indexBuffer);
 
-	vkGetBufferMemoryRequirements(mDevice, mesh.indexBuffer, &memoryRequirements);
+	vkGetBufferMemoryRequirements(mDevice, mesh._indexBuffer, &memoryRequirements);
 
 	memoryAllocateInfo.allocationSize = memoryRequirements.size;
 	memoryAllocateInfo.memoryTypeIndex = localMemoryType;
-	vkAllocateMemory(mDevice, &memoryAllocateInfo, nullptr, &mesh.indexMemory);
+	vkAllocateMemory(mDevice, &memoryAllocateInfo, nullptr, &mesh._indexMemory);
 
-	vkBindBufferMemory(mDevice, mesh.indexBuffer, mesh.indexMemory, 0);
+	vkBindBufferMemory(mDevice, mesh._indexBuffer, mesh._indexMemory, 0);
 
 	// Create index staging buffer
 	bufferCreateInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
-	vkCreateBuffer(mDevice, &bufferCreateInfo, nullptr, &mesh.indexStagingBuffer);
+	vkCreateBuffer(mDevice, &bufferCreateInfo, nullptr, &mesh._indexStagingBuffer);
 
-	vkGetBufferMemoryRequirements(mDevice, mesh.indexStagingBuffer, &memoryRequirements);
+	vkGetBufferMemoryRequirements(mDevice, mesh._indexStagingBuffer, &memoryRequirements);
 
 	memoryAllocateInfo.allocationSize = memoryRequirements.size;
 	memoryAllocateInfo.memoryTypeIndex = hostMemoryType;
-	vkAllocateMemory(mDevice, &memoryAllocateInfo, nullptr, &mesh.indexStagingMemory);
+	vkAllocateMemory(mDevice, &memoryAllocateInfo, nullptr, &mesh._indexStagingMemory);
 
-	vkBindBufferMemory(mDevice, mesh.indexStagingBuffer, mesh.indexStagingMemory, 0);
+	vkBindBufferMemory(mDevice, mesh._indexStagingBuffer, mesh._indexStagingMemory, 0);
 
-	vkMapMemory(mDevice, mesh.indexStagingMemory, 0, bufferCreateInfo.size, 0, (void**)&mesh.indices);
+	vkMapMemory(mDevice, mesh._indexStagingMemory, 0, bufferCreateInfo.size, 0, (void**)&mesh.indices);
 }
 
 void RenderSystem::addMesh(const Entity& entity)
@@ -2141,13 +2162,13 @@ void RenderSystem::addMesh(const Entity& entity)
 	unsigned int localMemoryType = memoryTypeFromProperties(mPhysicalDeviceMemoryProperties, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 	unsigned int hostMemoryType = memoryTypeFromProperties(mPhysicalDeviceMemoryProperties, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 
-	mesh.vertexBuffer = VK_NULL_HANDLE;
-	mesh.indexBuffer = VK_NULL_HANDLE;
+	mesh._vertexBuffer = VK_NULL_HANDLE;
+	mesh._indexBuffer = VK_NULL_HANDLE;
 	if (mesh.nVertices != 0 && mesh.nIndices != 0)
-		createMeshBuffers(mesh);
+		allocateMeshBuffers(mesh);
 
-	// Create uniform buffer
-	unsigned int uniformBufferRange = sizeof(glm::mat4) * 2; // Model matrix, normal matrix
+	// Create uniform buffer - stores model and normal matrices
+	unsigned int uniformBufferRange = sizeof(glm::mat4) * 2;
 	VkBufferCreateInfo bufferCreateInfo = {};
 	bufferCreateInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
 	bufferCreateInfo.pNext = nullptr;
@@ -2158,33 +2179,33 @@ void RenderSystem::addMesh(const Entity& entity)
 	bufferCreateInfo.queueFamilyIndexCount = 0;
 	bufferCreateInfo.pQueueFamilyIndices = nullptr;
 	
-	vkCreateBuffer(mDevice, &bufferCreateInfo, nullptr, &mesh.uniformBuffer);
+	vkCreateBuffer(mDevice, &bufferCreateInfo, nullptr, &mesh._uniformBuffer);
 
 	VkMemoryRequirements memoryRequirements;
-	vkGetBufferMemoryRequirements(mDevice, mesh.uniformBuffer, &memoryRequirements);
+	vkGetBufferMemoryRequirements(mDevice, mesh._uniformBuffer, &memoryRequirements);
 
 	VkMemoryAllocateInfo memoryAllocateInfo = {};
 	memoryAllocateInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
 	memoryAllocateInfo.pNext = nullptr;
 	memoryAllocateInfo.allocationSize = memoryRequirements.size;
 	memoryAllocateInfo.memoryTypeIndex = localMemoryType;
-	vkAllocateMemory(mDevice, &memoryAllocateInfo, nullptr, &mesh.uniformMemory);
+	vkAllocateMemory(mDevice, &memoryAllocateInfo, nullptr, &mesh._uniformMemory);
 
-	vkBindBufferMemory(mDevice, mesh.uniformBuffer, mesh.uniformMemory, 0);
+	vkBindBufferMemory(mDevice, mesh._uniformBuffer, mesh._uniformMemory, 0);
 
 	// Create uniform staging buffer
 	bufferCreateInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
-	vkCreateBuffer(mDevice, &bufferCreateInfo, nullptr, &mesh.uniformStagingBuffer);
+	vkCreateBuffer(mDevice, &bufferCreateInfo, nullptr, &mesh._uniformStagingBuffer);
 
-	vkGetBufferMemoryRequirements(mDevice, mesh.uniformStagingBuffer, &memoryRequirements);
+	vkGetBufferMemoryRequirements(mDevice, mesh._uniformStagingBuffer, &memoryRequirements);
 
 	memoryAllocateInfo.allocationSize = memoryRequirements.size;
 	memoryAllocateInfo.memoryTypeIndex = hostMemoryType;
-	vkAllocateMemory(mDevice, &memoryAllocateInfo, nullptr, &mesh.uniformStagingMemory);
+	vkAllocateMemory(mDevice, &memoryAllocateInfo, nullptr, &mesh._uniformStagingMemory);
 
-	vkBindBufferMemory(mDevice, mesh.uniformStagingBuffer, mesh.uniformStagingMemory, 0);
+	vkBindBufferMemory(mDevice, mesh._uniformStagingBuffer, mesh._uniformStagingMemory, 0);
 
-	vkMapMemory(mDevice, mesh.uniformStagingMemory, 0, bufferCreateInfo.size, 0, (void**)&mesh.uniformData);
+	vkMapMemory(mDevice, mesh._uniformStagingMemory, 0, bufferCreateInfo.size, 0, (void**)&mesh._uniformData);
 
 	// Create descriptor set
 	VkDescriptorSetAllocateInfo descriptorSetAllocateInfo = {};
@@ -2193,17 +2214,17 @@ void RenderSystem::addMesh(const Entity& entity)
 	descriptorSetAllocateInfo.descriptorPool = mDescriptorPool;
 	descriptorSetAllocateInfo.descriptorSetCount = 1;
 	descriptorSetAllocateInfo.pSetLayouts = &mDirectionalLightingDescriptorSetLayouts[1];
-	vkAllocateDescriptorSets(mDevice, &descriptorSetAllocateInfo, &mesh.descriptorSet);
+	vkAllocateDescriptorSets(mDevice, &descriptorSetAllocateInfo, &mesh._descriptorSet);
 
 	VkDescriptorBufferInfo uniformBufferInfo = {};
-	uniformBufferInfo.buffer = mesh.uniformBuffer;
+	uniformBufferInfo.buffer = mesh._uniformBuffer;
 	uniformBufferInfo.offset = 0;
 	uniformBufferInfo.range = uniformBufferRange;
 
 	VkWriteDescriptorSet descriptorSetWrite = {};
 	descriptorSetWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
 	descriptorSetWrite.pNext = nullptr;
-	descriptorSetWrite.dstSet = mesh.descriptorSet;
+	descriptorSetWrite.dstSet = mesh._descriptorSet;
 	descriptorSetWrite.dstBinding = 0;
 	descriptorSetWrite.dstArrayElement = 0;
 	descriptorSetWrite.descriptorCount = 1;
@@ -2229,25 +2250,25 @@ void RenderSystem::removeMesh(const std::vector<EntityID>::iterator& IDIterator)
 {
 	Mesh& mesh = mMeshManager.getComponent(*IDIterator);
 
-	vkFreeMemory(mDevice, mesh.vertexMemory, nullptr);
-	vkDestroyBuffer(mDevice, mesh.vertexBuffer, nullptr);
-	vkUnmapMemory(mDevice, mesh.vertexStagingMemory);
-	vkFreeMemory(mDevice, mesh.vertexStagingMemory, nullptr);
-	vkDestroyBuffer(mDevice, mesh.vertexStagingBuffer, nullptr);
-	vkFreeMemory(mDevice, mesh.indexMemory, nullptr);
-	vkDestroyBuffer(mDevice, mesh.indexBuffer, nullptr);
-	vkUnmapMemory(mDevice, mesh.indexStagingMemory);
-	vkFreeMemory(mDevice, mesh.indexStagingMemory, nullptr);
-	vkDestroyBuffer(mDevice, mesh.indexStagingBuffer, nullptr);
-	vkFreeMemory(mDevice, mesh.uniformMemory, nullptr);
-	vkDestroyBuffer(mDevice, mesh.uniformBuffer, nullptr);
-	vkUnmapMemory(mDevice, mesh.uniformStagingMemory);
-	vkFreeMemory(mDevice, mesh.uniformStagingMemory, nullptr);
-	vkDestroyBuffer(mDevice, mesh.uniformStagingBuffer, nullptr);
-	vkFreeDescriptorSets(mDevice, mDescriptorPool, 1, &mesh.descriptorSet);
+	vkFreeMemory(mDevice, mesh._vertexMemory, nullptr);
+	vkDestroyBuffer(mDevice, mesh._vertexBuffer, nullptr);
+	vkUnmapMemory(mDevice, mesh._vertexStagingMemory);
+	vkFreeMemory(mDevice, mesh._vertexStagingMemory, nullptr);
+	vkDestroyBuffer(mDevice, mesh._vertexStagingBuffer, nullptr);
+	vkFreeMemory(mDevice, mesh._indexMemory, nullptr);
+	vkDestroyBuffer(mDevice, mesh._indexBuffer, nullptr);
+	vkUnmapMemory(mDevice, mesh._indexStagingMemory);
+	vkFreeMemory(mDevice, mesh._indexStagingMemory, nullptr);
+	vkDestroyBuffer(mDevice, mesh._indexStagingBuffer, nullptr);
+	vkFreeMemory(mDevice, mesh._uniformMemory, nullptr);
+	vkDestroyBuffer(mDevice, mesh._uniformBuffer, nullptr);
+	vkUnmapMemory(mDevice, mesh._uniformStagingMemory);
+	vkFreeMemory(mDevice, mesh._uniformStagingMemory, nullptr);
+	vkDestroyBuffer(mDevice, mesh._uniformStagingBuffer, nullptr);
+	vkFreeDescriptorSets(mDevice, mDescriptorPool, 1, &mesh._descriptorSet);
 
 	Transform& transform = mTransformManager.getComponent(*IDIterator);
-	if(transform.changedCallbacks.data) // Incase the transform has already been freed.
+	if(transform.changedCallbacks.data) // Incase the transform has already been freed
 		transform.unsubscribeChangedEvent(&mMeshTransformChangedCallback);
 
 	mMeshIDs.erase(IDIterator);
@@ -2258,44 +2279,44 @@ void RenderSystem::addDirectionalLight(const Entity& entity)
 	DirectionalLight& directionalLight = entity.getComponent<DirectionalLight>();
 
 	#pragma region Create directional light resources
-	unsigned int uniformBufferRange = 2 * sizeof(glm::vec3) + 4;
+	unsigned int uniformBufferRange = 2 * sizeof(glm::vec3) + 4; // vec3 has an alignment of 16 bytes according to std140
 	// Create uniform buffer
 	VkBufferCreateInfo bufferCreateInfo = {};
 	bufferCreateInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
 	bufferCreateInfo.pNext = nullptr;
 	bufferCreateInfo.flags = 0;
-	bufferCreateInfo.size = uniformBufferRange; // vec3 has an alignment of 16 bytes according to std140
+	bufferCreateInfo.size = uniformBufferRange;
 	bufferCreateInfo.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
 	bufferCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 	bufferCreateInfo.queueFamilyIndexCount = 0;
 	bufferCreateInfo.pQueueFamilyIndices = nullptr;
-	vkCreateBuffer(mDevice, &bufferCreateInfo, nullptr, &directionalLight.uniformBuffer);
+	vkCreateBuffer(mDevice, &bufferCreateInfo, nullptr, &directionalLight._uniformBuffer);
 
 	VkMemoryRequirements memoryRequirements;
-	vkGetBufferMemoryRequirements(mDevice, directionalLight.uniformBuffer, &memoryRequirements);
+	vkGetBufferMemoryRequirements(mDevice, directionalLight._uniformBuffer, &memoryRequirements);
 
 	VkMemoryAllocateInfo memoryAllocateInfo = {};
 	memoryAllocateInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
 	memoryAllocateInfo.pNext = nullptr;
 	memoryAllocateInfo.allocationSize = memoryRequirements.size;
 	memoryAllocateInfo.memoryTypeIndex = memoryTypeFromProperties(mPhysicalDeviceMemoryProperties, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-	vkAllocateMemory(mDevice, &memoryAllocateInfo, nullptr, &directionalLight.uniformMemory);
+	vkAllocateMemory(mDevice, &memoryAllocateInfo, nullptr, &directionalLight._uniformMemory);
 
-	vkBindBufferMemory(mDevice, directionalLight.uniformBuffer, directionalLight.uniformMemory, 0);
+	vkBindBufferMemory(mDevice, directionalLight._uniformBuffer, directionalLight._uniformMemory, 0);
 
 	// Create uniform staging buffer
 	bufferCreateInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
-	vkCreateBuffer(mDevice, &bufferCreateInfo, nullptr, &directionalLight.uniformStagingBuffer);
+	vkCreateBuffer(mDevice, &bufferCreateInfo, nullptr, &directionalLight._uniformStagingBuffer);
 
-	vkGetBufferMemoryRequirements(mDevice, directionalLight.uniformStagingBuffer, &memoryRequirements);
+	vkGetBufferMemoryRequirements(mDevice, directionalLight._uniformStagingBuffer, &memoryRequirements);
 
 	memoryAllocateInfo.allocationSize = memoryRequirements.size;
 	memoryAllocateInfo.memoryTypeIndex = memoryTypeFromProperties(mPhysicalDeviceMemoryProperties, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-	vkAllocateMemory(mDevice, &memoryAllocateInfo, nullptr, &directionalLight.uniformStagingMemory);
+	vkAllocateMemory(mDevice, &memoryAllocateInfo, nullptr, &directionalLight._uniformStagingMemory);
 
-	vkBindBufferMemory(mDevice, directionalLight.uniformStagingBuffer, directionalLight.uniformStagingMemory, 0);
+	vkBindBufferMemory(mDevice, directionalLight._uniformStagingBuffer, directionalLight._uniformStagingMemory, 0);
 
-	vkMapMemory(mDevice, directionalLight.uniformStagingMemory, 0, bufferCreateInfo.size, 0, (void**)&directionalLight.uniformData);
+	vkMapMemory(mDevice, directionalLight._uniformStagingMemory, 0, bufferCreateInfo.size, 0, (void**)&directionalLight._uniformData);
 
 	// Create descriptor set
 	VkDescriptorSetAllocateInfo descriptorSetAllocateInfo = {};
@@ -2304,17 +2325,17 @@ void RenderSystem::addDirectionalLight(const Entity& entity)
 	descriptorSetAllocateInfo.descriptorPool = mDescriptorPool;
 	descriptorSetAllocateInfo.descriptorSetCount = 1;
 	descriptorSetAllocateInfo.pSetLayouts = &mDirectionalLightingDescriptorSetLayouts[2];
-	vkAllocateDescriptorSets(mDevice, &descriptorSetAllocateInfo, &directionalLight.descriptorSet);
+	vkAllocateDescriptorSets(mDevice, &descriptorSetAllocateInfo, &directionalLight._descriptorSet);
 
 	VkDescriptorBufferInfo uniformBufferInfo = {};
-	uniformBufferInfo.buffer = directionalLight.uniformBuffer;
+	uniformBufferInfo.buffer = directionalLight._uniformBuffer;
 	uniformBufferInfo.offset = 0;
 	uniformBufferInfo.range = uniformBufferRange;
 
 	VkWriteDescriptorSet descriptorSetWrite = {};
 	descriptorSetWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
 	descriptorSetWrite.pNext = nullptr;
-	descriptorSetWrite.dstSet = directionalLight.descriptorSet;
+	descriptorSetWrite.dstSet = directionalLight._descriptorSet;
 	descriptorSetWrite.dstBinding = 0;
 	descriptorSetWrite.dstArrayElement = 0;
 	descriptorSetWrite.descriptorCount = 1;
@@ -2339,15 +2360,15 @@ void RenderSystem::removeDirectionalLight(const std::vector<EntityID>::iterator&
 {
 	DirectionalLight& directionalLight = mDirectionalLightManager.getComponent(*IDIterator);
 
-	vkFreeMemory(mDevice, directionalLight.uniformMemory, nullptr);
-	vkDestroyBuffer(mDevice, directionalLight.uniformBuffer, nullptr);
-	vkUnmapMemory(mDevice, directionalLight.uniformStagingMemory);
-	vkFreeMemory(mDevice, directionalLight.uniformStagingMemory, nullptr);
-	vkDestroyBuffer(mDevice, directionalLight.uniformStagingBuffer, nullptr);
-	vkFreeDescriptorSets(mDevice, mDescriptorPool, 1, &directionalLight.descriptorSet);
+	vkFreeMemory(mDevice, directionalLight._uniformMemory, nullptr);
+	vkDestroyBuffer(mDevice, directionalLight._uniformBuffer, nullptr);
+	vkUnmapMemory(mDevice, directionalLight._uniformStagingMemory);
+	vkFreeMemory(mDevice, directionalLight._uniformStagingMemory, nullptr);
+	vkDestroyBuffer(mDevice, directionalLight._uniformStagingBuffer, nullptr);
+	vkFreeDescriptorSets(mDevice, mDescriptorPool, 1, &directionalLight._descriptorSet);
 
 	Transform& transform = mTransformManager.getComponent(*IDIterator);
-	if(transform.changedCallbacks.data) // Incase the transform has already been freed.
+	if(transform.changedCallbacks.data) // Incase the transform has already been freed
 		transform.unsubscribeChangedEvent(&mDirectionalLightTransformChangedCallback);
 
 	mDirectionalLightIDs.erase(IDIterator);
@@ -2485,10 +2506,11 @@ RenderSystem::~RenderSystem()
 	mUITextManager.unsubscribeRemovedEvent(&mUITextRemovedCallback);
 	mUIButtonManager.unsubscribeAddedEvent(&mUIButtonAddedCallback);
 	mUIButtonManager.unsubscribeRemovedEvent(&mUIButtonRemovedCallback);
+	mWindowManager.unsubscribeLMBPressedEvent(&mLMBPressedCallback);
 
 	vkDestroySemaphore(mDevice, mRenderComplete, nullptr);
 	vkDestroySemaphore(mDevice, mImageAvailable, nullptr);
-	vkFreeMemory(mDevice, mUIQuadVertexMemory, nullptr);
+	vkFreeMemory(mDevice, mQuadVertexMemory, nullptr);
 	vkDestroyBuffer(mDevice, mQuadVertexBuffer, nullptr);
 	vkFreeMemory(mDevice, mCubeVertexMemory, nullptr);
 	vkDestroyBuffer(mDevice, mCubeVertexBuffer, nullptr);
@@ -2513,7 +2535,7 @@ RenderSystem::~RenderSystem()
 	vkDestroyShaderModule(mDevice, mFragmentShader, nullptr);
 	vkDestroyShaderModule(mDevice, mVertexShader, nullptr);
 	vkDestroyShaderModule(mDevice, mQuadVertexShader, nullptr);
-	vkDestroyShaderModule(mDevice, mUIFragmentShader, nullptr);
+	vkDestroyShaderModule(mDevice, m2DFragmentShader, nullptr);
 	VkDescriptorSet descriptorSets[3] = { mCameraDescriptorSet, mSkyboxDescriptorSet, mEnvironmentDescriptorSet };
 	vkFreeDescriptorSets(mDevice, mDescriptorPool, 3, descriptorSets);
 	vkDestroyDescriptorSetLayout(mDevice, mImageDescriptorSetLayout, nullptr);
@@ -2670,10 +2692,11 @@ void RenderSystem::UIButtonRemoved(const Entity& entity)
 
 void RenderSystem::meshTransformChanged(Transform& transform) const
 {
+	// Update GPU side model and normal matrices
 	Mesh& mesh = mMeshManager.getComponent(transform.entityID);
-	memcpy(mesh.uniformData, &transform.matrix, sizeof(glm::mat4));
+	memcpy(mesh._uniformData, &transform.matrix, sizeof(glm::mat4));
 	glm::mat4 normalMatrix = glm::transpose(glm::inverse(transform.matrix));
-	memcpy(mesh.uniformData + sizeof(glm::mat4), &normalMatrix, sizeof(glm::mat4));
+	memcpy(mesh._uniformData + sizeof(glm::mat4), &normalMatrix, sizeof(glm::mat4));
 
 	#pragma region Copy staging buffer to device local buffer
 	VkCommandBufferBeginInfo commandBufferBeginInfo = {};
@@ -2687,7 +2710,7 @@ void RenderSystem::meshTransformChanged(Transform& transform) const
 	copyRegion.srcOffset = 0;
 	copyRegion.dstOffset = 0;
 	copyRegion.size = sizeof(glm::mat4) * 2;
-	vkCmdCopyBuffer(mCommandBuffer, mesh.uniformStagingBuffer, mesh.uniformBuffer, 1, &copyRegion);
+	vkCmdCopyBuffer(mCommandBuffer, mesh._uniformStagingBuffer, mesh._uniformBuffer, 1, &copyRegion);
 
 	vkEndCommandBuffer(mCommandBuffer);
 
@@ -2710,9 +2733,10 @@ void RenderSystem::meshTransformChanged(Transform& transform) const
 
 void RenderSystem::directionalLightTransformChanged(Transform& transform) const
 {
+	// Update GPU side direction vector
 	DirectionalLight& directionalLight = mDirectionalLightManager.getComponent(transform.entityID);
 	glm::vec3 direction = transform.worldDirection();
-	memcpy(directionalLight.uniformData + sizeof(glm::vec3), &direction, sizeof(glm::vec3));
+	memcpy(directionalLight._uniformData + sizeof(glm::vec3), &direction, sizeof(glm::vec3));
 
 	#pragma region Copy staging buffer to device local buffer
 	VkCommandBufferBeginInfo commandBufferBeginInfo = {};
@@ -2726,7 +2750,7 @@ void RenderSystem::directionalLightTransformChanged(Transform& transform) const
 	copyRegion.srcOffset = sizeof(glm::vec3);
 	copyRegion.dstOffset = 16; // vec3 requires 12 bytes but it's alignment is 16 bytes
 	copyRegion.size = sizeof(glm::vec3);
-	vkCmdCopyBuffer(mCommandBuffer, directionalLight.uniformStagingBuffer, directionalLight.uniformBuffer, 1, &copyRegion);
+	vkCmdCopyBuffer(mCommandBuffer, directionalLight._uniformStagingBuffer, directionalLight._uniformBuffer, 1, &copyRegion);
 
 	vkEndCommandBuffer(mCommandBuffer);
 
@@ -2749,7 +2773,8 @@ void RenderSystem::directionalLightTransformChanged(Transform& transform) const
 
 void RenderSystem::directionalLightChanged(const DirectionalLight& directionalLight)
 {
-	memcpy(directionalLight.uniformData, &directionalLight.colour, sizeof(glm::vec3));
+	// Update GPU side light colour
+	memcpy(directionalLight._uniformData, &directionalLight.colour, sizeof(glm::vec3));
 
 	#pragma region Copy staging buffer to device local buffer
 	VkCommandBufferBeginInfo commandBufferBeginInfo = {};
@@ -2763,7 +2788,7 @@ void RenderSystem::directionalLightChanged(const DirectionalLight& directionalLi
 	copyRegion.srcOffset = 0;
 	copyRegion.dstOffset = 0;
 	copyRegion.size = sizeof(glm::vec3);
-	vkCmdCopyBuffer(mCommandBuffer, directionalLight.uniformStagingBuffer, directionalLight.uniformBuffer, 1, &copyRegion);
+	vkCmdCopyBuffer(mCommandBuffer, directionalLight._uniformStagingBuffer, directionalLight._uniformBuffer, 1, &copyRegion);
 
 	vkEndCommandBuffer(mCommandBuffer);
 
@@ -2796,6 +2821,24 @@ void RenderSystem::cameraViewChanged(const Transform& transform, const Camera& c
 		memcpy(mUniformData + 2 * sizeof(glm::mat4), &transform.worldPosition, sizeof(glm::vec3));
 }
 
+void RenderSystem::LMBPressed()
+{
+	glm::vec2 cursor = mWindowManager.cursorPosition();
+	cursor -= glm::vec2(float(mSurfaceWidth) / 2.0f, float(mSurfaceHeight) / 2.0f);
+
+	for (const EntityID& entity : mUIButtonIDs)
+	{
+		UIButton& uiButton = mUIButtonManager.getComponent(entity);
+		if (uiButton._underCursor)
+		{
+			if(uiButton.toggle)
+				uiButton._pressed = !uiButton._pressed;
+				
+			uiButton.callback();
+		}
+	}
+}
+
 void RenderSystem::update()
 {
 	/* TEMPORARY FIX: FONT MUST BE LOADED BEFORE RENDER PASS */
@@ -2805,18 +2848,15 @@ void RenderSystem::update()
 
 	glm::vec2 cursor = mWindowManager.cursorPosition();
 	cursor -= glm::vec2(float(mSurfaceWidth) / 2.0f, float(mSurfaceHeight) / 2.0f);
-	std::vector<ButtonCallback> buttonCallbacks;
 
 	vkBeginCommandBuffer(mCommandBuffer, &mCommandBufferBeginInfo);
 
 	/* --== MAIN RENDER PASS ==-- */
-	// Render scene
 	vkAcquireNextImageKHR(mDevice, mSwapchain, UINT64_MAX, mImageAvailable, VK_NULL_HANDLE, &mCurrentImage);
 
 	mRenderPassBeginInfo.framebuffer = mFramebuffers[mCurrentImage];
 	vkCmdBeginRenderPass(mCommandBuffer, &mRenderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
 
-	// Viewport and scissor should remain the same for the UI pass
 	vkCmdSetViewport(mCommandBuffer, 0, 1, &mViewport);
 	vkCmdSetScissor(mCommandBuffer, 0, 1, &mScissor);
 
@@ -2826,14 +2866,14 @@ void RenderSystem::update()
 	
 	for (const EntityID& directionalLightID : mDirectionalLightIDs)
 	{
-		vkCmdBindDescriptorSets(mCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, mDirectionalPipelineLayout, 2, 1, &mDirectionalLightManager.getComponent(directionalLightID).descriptorSet, 0, nullptr);
+		vkCmdBindDescriptorSets(mCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, mDirectionalPipelineLayout, 2, 1, &mDirectionalLightManager.getComponent(directionalLightID)._descriptorSet, 0, nullptr);
 
 		for (const EntityID& meshID : mMeshIDs)
 		{
 			Mesh& mesh = mMeshManager.getComponent(meshID);
-			vkCmdBindDescriptorSets(mCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, mDirectionalPipelineLayout, 1, 1, &mesh.descriptorSet, 0, nullptr);
-			vkCmdBindVertexBuffers(mCommandBuffer, 0, 1, &mesh.vertexBuffer, &zeroOffset);
-			vkCmdBindIndexBuffer(mCommandBuffer, mesh.indexBuffer, 0, VK_INDEX_TYPE_UINT32);
+			vkCmdBindDescriptorSets(mCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, mDirectionalPipelineLayout, 1, 1, &mesh._descriptorSet, 0, nullptr);
+			vkCmdBindVertexBuffers(mCommandBuffer, 0, 1, &mesh._vertexBuffer, &ZERO_OFFSET);
+			vkCmdBindIndexBuffer(mCommandBuffer, mesh._indexBuffer, 0, VK_INDEX_TYPE_UINT32);
 
 			vkCmdDrawIndexed(mCommandBuffer, mesh.nIndices, 1, 0, 0, 0);
 		}
@@ -2846,7 +2886,7 @@ void RenderSystem::update()
 
 	vkCmdBindDescriptorSets(mCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, mSkyboxPipelineLayout, 0, 1, &mSkyboxDescriptorSet, 0, nullptr);
 
-	vkCmdBindVertexBuffers(mCommandBuffer, 0, 1, &mCubeVertexBuffer, &zeroOffset);
+	vkCmdBindVertexBuffers(mCommandBuffer, 0, 1, &mCubeVertexBuffer, &ZERO_OFFSET);
 
 	vkCmdDraw(mCommandBuffer, 36, 1, 0, 0);
 
@@ -2855,7 +2895,7 @@ void RenderSystem::update()
 
 	vkCmdBindPipeline(mCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m2DPipeline);
 
-	vkCmdBindVertexBuffers(mCommandBuffer, 0, 1, &mQuadVertexBuffer, &zeroOffset);
+	vkCmdBindVertexBuffers(mCommandBuffer, 0, 1, &mQuadVertexBuffer, &ZERO_OFFSET);
 
 	// Sprites
 	unsigned int text = false;
@@ -2865,7 +2905,7 @@ void RenderSystem::update()
 		Transform2D& transform = mTransform2DManager.getComponent(entity);
 		Sprite& sprite = mSpriteManager.getComponent(entity);
 
-		glm::mat4 matrix(m2DProjection * transform.matrix);
+		glm::mat4 matrix = m2DProjection * transform.matrix * glm::scale(glm::mat4(1.0f), glm::vec3(sprite.width, sprite.height, 1.0f));
 		vkCmdPushConstants(mCommandBuffer, m2DPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(glm::mat4), &matrix[0][0]);
 		glm::vec3 colour(1.0f);
 		vkCmdPushConstants(mCommandBuffer, m2DPipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 64, sizeof(glm::vec3), &colour);
@@ -2878,23 +2918,26 @@ void RenderSystem::update()
 	for (const EntityID& entity : mUIButtonIDs)
 	{
 		Transform2D& transform = mTransform2DManager.getComponent(entity);
+
 		UIButton& uiButton = mUIButtonManager.getComponent(entity);
 
-		glm::mat4 matrix(m2DProjection * transform.matrix);
+		glm::mat4 transformMatrix = transform.matrix * glm::scale(glm::mat4(1.0f), glm::vec3(uiButton.width, uiButton.height, 1.0f));
+		glm::mat4 matrix = m2DProjection * transformMatrix;
 		vkCmdPushConstants(mCommandBuffer, m2DPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(glm::mat4), &matrix[0][0]);
 		vkCmdPushConstants(mCommandBuffer, m2DPipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 64, sizeof(glm::vec3), &uiButton.colour);
 
+		// Detect if cursor is on button rectangle
 		bool cursorOnButton = false;
-		if (transform.rotation == 0.0f)
+		if (transform.worldRotation == 0.0f)
 		{
-			glm::vec2 halfScale = 0.5f * transform.worldScale;
-			cursorOnButton = cursor.x > transform.worldPosition.x - halfScale.x && cursor.x < transform.worldPosition.x + halfScale.x && cursor.y < transform.worldPosition.y + halfScale.y && cursor.y > transform.worldPosition.y - halfScale.y;
+			glm::vec2 halfExtent = 0.5f * glm::vec2(uiButton.width, uiButton.height);
+			cursorOnButton = cursor.x > transform.worldPosition.x - halfExtent.x && cursor.x < transform.worldPosition.x + halfExtent.x && cursor.y < transform.worldPosition.y + halfExtent.y && cursor.y > transform.worldPosition.y - halfExtent.y;
 		}
 		else
 		{
-			glm::vec2 A = glm::vec2(transform.matrix * glm::vec3(-0.5f, -0.5f, 1.0f));
-			glm::vec2 B = glm::vec2(transform.matrix * glm::vec3(0.5f, -0.5f, 1.0f));
-			glm::vec2 D = glm::vec2(transform.matrix * glm::vec3(-0.5f, 0.5f, 1.0f));
+			glm::vec2 A = glm::vec2(transformMatrix * glm::vec4(-0.5f, -0.5f, 0.0f, 1.0f));
+			glm::vec2 B = glm::vec2(transformMatrix * glm::vec4(0.5f, -0.5f, 0.0f, 1.0f));
+			glm::vec2 D = glm::vec2(transformMatrix * glm::vec4(-0.5f, 0.5f, 0.0f, 1.0f));
 
 			glm::vec2 AM = cursor - A;
 			glm::vec2 AB = B - A;
@@ -2904,26 +2947,39 @@ void RenderSystem::update()
 			float d2 = glm::dot(AM, AD);
 			cursorOnButton = (0.0f < d1 && d1 < glm::dot(AB, AB)) && (0.0f < d2 && d2 < glm::dot(AD, AD));
 		}
+		uiButton._underCursor = cursorOnButton;
 		
-		if (cursorOnButton)
+		// Check if the button is pressed and set the image accordingly
+		if (!uiButton.toggle)
 		{
-			if (mWindowManager.mouseButton())
+			if (cursorOnButton)
 			{
-				if (!uiButton._pressed)
-					buttonCallbacks.push_back(uiButton.callback);
-				uiButton._pressed = true;
-
-				vkCmdBindDescriptorSets(mCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m2DPipelineLayout, 0, 1, &uiButton._pressedDescriptorSet, 0, nullptr);
+				if (mWindowManager.LMBDown())
+				{
+					uiButton._pressed = true;
+					vkCmdBindDescriptorSets(mCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m2DPipelineLayout, 0, 1, &uiButton._pressedDescriptorSet, 0, nullptr);
+				}
+				else
+				{
+					uiButton._pressed = false;
+					vkCmdBindDescriptorSets(mCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m2DPipelineLayout, 0, 1, &uiButton._canpressDescriptorSet, 0, nullptr);
+				}
 			}
 			else
 			{
 				uiButton._pressed = false;
-
-				vkCmdBindDescriptorSets(mCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m2DPipelineLayout, 0, 1, &uiButton._canpressDescriptorSet, 0, nullptr);
+				vkCmdBindDescriptorSets(mCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m2DPipelineLayout, 0, 1, &uiButton._unpressedDescriptorSet, 0, nullptr);
 			}
 		}
 		else
-			vkCmdBindDescriptorSets(mCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m2DPipelineLayout, 0, 1, &uiButton._unpressedDescriptorSet, 0, nullptr);
+		{
+			if (uiButton._pressed)
+				vkCmdBindDescriptorSets(mCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m2DPipelineLayout, 0, 1, &uiButton._pressedDescriptorSet, 0, nullptr);
+			else if(cursorOnButton)
+				vkCmdBindDescriptorSets(mCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m2DPipelineLayout, 0, 1, &uiButton._canpressDescriptorSet, 0, nullptr);
+			else
+				vkCmdBindDescriptorSets(mCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m2DPipelineLayout, 0, 1, &uiButton._unpressedDescriptorSet, 0, nullptr);
+		}
 
 		vkCmdDraw(mCommandBuffer, 4, 1, 0, 0);
 	}
@@ -2937,18 +2993,18 @@ void RenderSystem::update()
 		Transform2D& transform = mTransform2DManager.getComponent(entity);
 		UIText& uiText = mUITextManager.getComponent(entity);
 
-		glm::vec2 glyphPosition = transform.worldPosition;
-		glm::mat3 rotMatrix = rotateMatrix(glm::radians(transform.worldRotation));
-		glm::vec2 advanceDirection = transform.rotation == 0 ? glm::vec2(transform.worldScale.x, 0.0f) : glm::vec2(rotMatrix * glm::vec3(transform.worldScale.x, 0.0f, 1.0f));
+		glm::vec2 glyphOffset = transform.worldPosition;
+		glm::mat4 rotMatrix = glm::rotate(glm::mat4(1.0f), glm::radians(transform.worldRotation), glm::vec3(0.0f, 0.0f, 1.0f));
+		glm::vec2 advanceDirection = transform.worldRotation == 0 ? glm::vec2(transform.scale.x, 0.0f) : glm::vec2(rotMatrix * glm::vec4(transform.scale.x, 0.0f, 0.0f, 1.0f));
 		for (unsigned int i = 0; i < uiText.text.size(); i++)
 		{
 			Glyph& glyph = *font->at(uiText.text[i]);
 
 			if (uiText.text[i] != 32)
 			{
-				glm::vec2 glyphSize(float(glyph.size.x) * transform.worldScale.x, float(glyph.size.y) * transform.worldScale.y);
-				glm::vec2 tempGlyphPosition = glyphPosition + glm::vec2(glyphSize.x/2.0f + transform.worldScale.x * float(glyph.bearing.x), -glyphSize.y/2.0f + transform.worldScale.y * float(glyph.size.y - glyph.bearing.y));
-				glm::mat4 transformMatrix(m2DProjection * translateMatrix(tempGlyphPosition) * rotMatrix * enlargeMatrix(glyphSize));
+				glm::vec2 glyphSize(float(glyph.size.x) * transform.scale.x, float(glyph.size.y) * transform.scale.y);
+				glm::vec2 glyphPosition = glyphOffset + glm::vec2(rotMatrix * glm::vec4(glyphSize.x/2.0f + transform.scale.x * float(glyph.bearing.x), -glyphSize.y/2.0f + transform.scale.y * float(glyph.size.y - glyph.bearing.y), 0.0f, 1.0f));
+				glm::mat4 transformMatrix = m2DProjection * glm::translate(glm::mat4(1.0f), glm::vec3(glyphPosition, 0.0f)) * rotMatrix * glm::scale(glm::mat4(1.0f), glm::vec3(glyphSize, 1.0f));
 
 				vkCmdPushConstants(mCommandBuffer, m2DPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(glm::mat4), &transformMatrix[0][0]);
 				vkCmdPushConstants(mCommandBuffer, m2DPipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 64, sizeof(glm::vec3), &uiText.colour);
@@ -2958,7 +3014,7 @@ void RenderSystem::update()
 				vkCmdDraw(mCommandBuffer, 4, 1, 0, 0);
 			}
 
-			glyphPosition += float(glyph.advance >> 6) * advanceDirection;
+			glyphOffset += float(glyph.advance >> 6) * advanceDirection;
 		}
 	}
 
@@ -2972,9 +3028,6 @@ void RenderSystem::update()
 
 	vkQueueWaitIdle(mGraphicsQueue);
 	vkResetCommandBuffer(mCommandBuffer, 0);
-
-	for (ButtonCallback& callback : buttonCallbacks)
-		callback();
 }
 
 void RenderSystem::setCamera(const Entity& entity)
@@ -3041,7 +3094,7 @@ void RenderSystem::setSkybox(const Cubemap* cubemap)
 	
 	vkBeginCommandBuffer(mCommandBuffer, &mCommandBufferBeginInfo);
 
-	vkCmdBindVertexBuffers(mCommandBuffer, 0, 1, &mCubeVertexBuffer, &zeroOffset);
+	vkCmdBindVertexBuffers(mCommandBuffer, 0, 1, &mCubeVertexBuffer, &ZERO_OFFSET);
 
 	// Convolute
 	vkCmdBindPipeline(mCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, mConvolutePipeline);
@@ -3054,11 +3107,11 @@ void RenderSystem::setSkybox(const Cubemap* cubemap)
 
 	vkCmdEndRenderPass(mCommandBuffer);
 
-	// Prefilter
+	// Prefilter - renders each mip level with increasing roughness
 	vkCmdBindPipeline(mCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, mPrefilterPipeline);
 
 	vkCmdBindDescriptorSets(mCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, mPrefilterPipelineLayout, 0, 1, &mEnvironmentDescriptorSet, 0, nullptr);
-	
+
 	VkRenderPassBeginInfo renderPassBeginInfo = {};
 	renderPassBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
 	renderPassBeginInfo.pNext = nullptr;
@@ -3231,7 +3284,7 @@ Entity loadModel(const char* directory)
 
 void applyModelMaterial(const Entity& model, const Material& material)
 {
-	std::vector<Mesh*> meshes = getComponentsInHierarchy<Mesh>(model);
+	std::vector<Mesh*> meshes = getComponentsInHierarchy3D<Mesh>(model);
 	for (Mesh* mesh : meshes)
 	{
 		mesh->material = material;

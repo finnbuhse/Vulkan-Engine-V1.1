@@ -41,6 +41,7 @@ struct Transform
 	glm::quat worldRotation;
 	glm::vec3 worldScale;
 
+	bool dynamic;
 	bool positionChanged;
 	bool rotationChanged;
 	bool scaleChanged;
@@ -64,6 +65,7 @@ struct TransformCreateInfo
 	glm::vec3 position = glm::vec3(0.0f);
 	glm::quat rotation = glm::vec3(0.0f);
 	glm::vec3 scale = glm::vec3(1.0f);
+	bool dynamic = true;
 
 	operator Transform() const;
 };
@@ -90,7 +92,8 @@ struct Transform2D
 	EntityID entityID;
 	EntityID parentID;
 
-	glm::mat3 matrix;
+	glm::mat4 localMatrix;
+	glm::mat4 matrix;
 
 	glm::vec2 lastPosition;
 	float lastRotation;
@@ -107,6 +110,7 @@ struct Transform2D
 	bool positionChanged;
 	bool rotationChanged;
 	bool scaleChanged;
+	bool dynamic;
 
 	void translate(const glm::vec2& translation);
 	void rotate(const float& angle);
@@ -124,6 +128,7 @@ struct Transform2DCreateInfo
 	glm::vec2 position = glm::vec2(0.0f);
 	float rotation = 0.0f;
 	glm::vec2 scale = glm::vec2(1.0f);
+	bool dynamic = true;
 
 	operator Transform2D() const;
 };

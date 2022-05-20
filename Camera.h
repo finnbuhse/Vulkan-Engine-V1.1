@@ -3,27 +3,24 @@
 
 struct Camera;
 
-struct CameraCreateInfo
-{
-	float fov;
-	float aspect;
-	float zNear, zFar;
-
-	operator Camera() const;
-};
-
 struct Camera
 {
+	// Dynamic array containing references to callbacks to be invoked when the camera's projection changes e.g FOV, aspect ratio, etc
 	Vector<std::function<void(const Camera&)>*> projectionChangedCallbacks;
+	// Dynamic array containing references to callbacks to be invoked when the camera's view changes e.g position, rotation.
 	Vector<std::function<void(const Transform&, const Camera&)>*> viewChangedCallbacks;
 
+	// Matrix which performs perspective projection
 	glm::mat4 projectionMatrix;
+	// Matrix which positions the scene for correct view
 	glm::mat4 viewMatrix;
 
+	// Store last frames state; enables camera system to detect changes and update matrices
 	float lastFov;
 	float lastAspect;
 	float lastZNear, lastZFar;
 
+	// Can be freely assigned to in order to adjust certain camera characteristics
 	float fov;
 	float aspect;
 	float zNear, zFar;
@@ -51,6 +48,16 @@ struct Camera
 	\param callback: Pointer to the function to be removed.
 	*/
 	void unsubscribeViewChangedEvent(const std::function<void(const Transform&, const Camera&)>* callback);
+};
+
+struct CameraCreateInfo
+{
+	float fov;
+	float aspect;
+	float zNear, zFar;
+
+	// 'Constructs' Camera 
+	operator Camera() const;
 };
 
 template<>
@@ -81,23 +88,15 @@ public:
 	CameraSystem(const CameraSystem& copy) = delete;
 	~CameraSystem();
 
-	/*
-	Invoked after a component of interest to the CameraSystem is added to an entity. Should not be used outside of it's internal use.
-	*/
+	// Invoked after a component of interest to the CameraSystem is added to an entity. Should not be used outside of it's internal use.
 	void componentAdded(const Entity& entity);
 
-	/*
-	Invoked before a component of interest to the CameraSystem is removed from an entity. Should not be used outside of it's internal use.
-	*/
+	// Invoked before a component of interest to the CameraSystem is removed from an entity. Should not be used outside of it's internal use.
 	void componentRemoved(const Entity& entity);
 
-	/*
-	Invoked when a 'Camera' entity's transform has changed. Should not be used outside of it's internal use.
-	*/
+	// Invoked when a camera entity's transform has changed. Should not be used outside of it's internal use
 	void transformChanged(Transform& transform) const;
 
-	/*
-	Invoked every frame. Should not be used outside of it's internal use.
-	*/
+	// Invoked every frame. Should not be used outside of it's internal use.
 	void update() const;
 };

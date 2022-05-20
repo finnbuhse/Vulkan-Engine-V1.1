@@ -219,16 +219,46 @@ void keyCallback(GLFWwindow* window, int GLFWKey, int scancode, int action, int 
 	}
 }
 
+#include <iostream>
+
 void mouseButtonCallback(GLFWwindow* window, int button, int action, int mods)
 {
 	static WindowManager& windowManager = WindowManager::instance();
 
-	if (action == GLFW_PRESS)
+	switch (action)
 	{
-		for (MouseButtonCallback* callback : windowManager.mMouseButtonCallbacks)
+	case GLFW_PRESS:
+		switch (button)
 		{
-			(*callback)();
+		case 0:
+			for (MouseButtonCallback* callback : windowManager.mLMBPressedCallbacks)
+				(*callback)();
+			break;
+		case 1:
+			for (MouseButtonCallback* callback : windowManager.mRMBPressedCallbacks)
+				(*callback)();
+			break;
+		default:
+			break;
 		}
+		break;
+	case GLFW_RELEASE:
+		switch (button)
+		{
+		case 0:
+			for (MouseButtonCallback* callback : windowManager.mLMBReleasedCallbacks)
+				(*callback)();
+			break;
+		case 1:
+			for (MouseButtonCallback* callback : windowManager.mRMBReleasedCallbacks)
+				(*callback)();
+			break;
+		default:
+			break;
+		}
+		break;
+	default:
+		break;
 	}
 }
 
@@ -267,7 +297,7 @@ WindowManager::WindowManager(const char* windowTitle, const unsigned int& window
 
 WindowManager& WindowManager::instance()
 {
-	static WindowManager instance("Game Engine", 1920, 1080);
+	static WindowManager instance(WINDOW_TITLE, 1920, 1080);
 	return instance;
 }
 
@@ -286,14 +316,9 @@ void WindowManager::pollEvents() const
 	glfwPollEvents();
 }
 
-#include <iostream>
-
 void WindowManager::enableCursor() const
 {
-	//double cursorX, cursorY;
-	//glfwGetCursorPos(mWindow, &cursorX, &cursorY);
 	glfwSetInputMode(mWindow, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
-	//glfwSetCursorPos(mWindow, (unsigned int)cursorX % mWindowWidth, (unsigned int)cursorY % mWindowHeight);
 }
 
 void WindowManager::disableCursor() const
@@ -306,9 +331,14 @@ bool WindowManager::keyDown(const Key& key) const
 	return glfwGetKey(mWindow, translateKey(key));
 }
 
-bool WindowManager::mouseButton() const
+bool WindowManager::LMBDown() const
 {
 	return glfwGetMouseButton(mWindow, 0);
+}
+
+bool WindowManager::RMBDown() const
+{
+	return glfwGetMouseButton(mWindow, 1);
 }
 
 glm::vec2 WindowManager::cursorPosition() const
@@ -340,14 +370,44 @@ void WindowManager::unsubscribeKeyReleaseEvent(const Key& key, const KeyCallback
 	callbacks.erase(std::find(callbacks.begin(), callbacks.end(), (KeyCallback*)callback));
 }
 
-void WindowManager::subscribeMousePressedEvent(const MouseButtonCallback* callback)
+void WindowManager::subscribeLMBPressedEvent(const MouseButtonCallback* callback)
 {
-	mMouseButtonCallbacks.push_back((MouseButtonCallback*)callback);
+	mLMBPressedCallbacks.push_back((MouseButtonCallback*)callback);
 }
 
-void WindowManager::unsubscribeMousePressedEvent(const MouseButtonCallback* callback)
+void WindowManager::unsubscribeLMBPressedEvent(const MouseButtonCallback* callback)
 {
-	mMouseButtonCallbacks.erase(std::find(mMouseButtonCallbacks.begin(), mMouseButtonCallbacks.end(), callback));
+	mLMBPressedCallbacks.erase(std::find(mLMBPressedCallbacks.begin(), mLMBPressedCallbacks.end(), callback));
+}
+
+void WindowManager::subscribeRMBPressedEvent(const MouseButtonCallback* callback)
+{
+	mRMBPressedCallbacks.push_back((MouseButtonCallback*)callback);
+}
+
+void WindowManager::unsubscribeRMBPressedEvent(const MouseButtonCallback* callback)
+{
+	mRMBPressedCallbacks.erase(std::find(mRMBPressedCallbacks.begin(), mRMBPressedCallbacks.end(), callback));
+}
+
+void WindowManager::subscribeLMBReleasedEvent(const MouseButtonCallback* callback)
+{
+	mLMBReleasedCallbacks.push_back((MouseButtonCallback*)callback);
+}
+
+void WindowManager::unsubscribeLMBReleasedEvent(const MouseButtonCallback* callback)
+{
+	mLMBReleasedCallbacks.erase(std::find(mLMBReleasedCallbacks.begin(), mLMBReleasedCallbacks.end(), callback));
+}
+
+void WindowManager::subscribeRMBReleasedEvent(const MouseButtonCallback* callback)
+{
+	mRMBReleasedCallbacks.push_back((MouseButtonCallback*)callback);
+}
+
+void WindowManager::unsubscribeRMBReleasedEvent(const MouseButtonCallback* callback)
+{
+	mRMBReleasedCallbacks.erase(std::find(mRMBReleasedCallbacks.begin(), mRMBReleasedCallbacks.end(), callback));
 }
 
 void WindowManager::subscribeCursorMovedEvent(const CursorMovedCallback* callback)

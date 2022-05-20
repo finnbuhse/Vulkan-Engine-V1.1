@@ -99,9 +99,11 @@ Texture::Texture(const TextureInfo& textureInfo)
 
 	// Check for format support
 	VkImageFormatProperties formatProperties;
-	assert(("[ERROR] Unsupported texture format", !vkGetPhysicalDeviceImageFormatProperties(renderSystem.mPhysicalDevice, textureInfo.format, VK_IMAGE_TYPE_2D, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, 0, &formatProperties)));
+	assert(("[ERROR] Unsupported texture format", !vkGetPhysicalDeviceImageFormatProperties(renderSystem.mPhysicalDevice, textureInfo.format, VK_IMAGE_TYPE_2D, VK_IMAGE_TILING_OPTIMAL, 
+			VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, 0, &formatProperties)));
 	
 	const FormatInfo formatInfo = getFormatInfo(textureInfo.format);
+	const bool hdr = textureInfo.format == VK_FORMAT_R16_SFLOAT || textureInfo.format == VK_FORMAT_R16G16_SFLOAT || textureInfo.format == VK_FORMAT_R16G16B16_SFLOAT || textureInfo.format == VK_FORMAT_R16G16B16A16_SFLOAT || textureInfo.format == VK_FORMAT_R32_SFLOAT || textureInfo.format == VK_FORMAT_R32G32_SFLOAT || textureInfo.format == VK_FORMAT_R32G32B32_SFLOAT || textureInfo.format == VK_FORMAT_R32G32B32A32_SFLOAT;
 
 	#pragma region Create texture resources
 	stbi_set_flip_vertically_on_load(false);
@@ -109,7 +111,7 @@ Texture::Texture(const TextureInfo& textureInfo)
 	// Load image
 	int width, height, channels;
 	void* textureData = nullptr;
-	const bool hdr = textureInfo.format == VK_FORMAT_R16_SFLOAT || textureInfo.format == VK_FORMAT_R16G16_SFLOAT || textureInfo.format == VK_FORMAT_R16G16B16_SFLOAT || textureInfo.format == VK_FORMAT_R16G16B16A16_SFLOAT || textureInfo.format == VK_FORMAT_R32_SFLOAT || textureInfo.format == VK_FORMAT_R32G32_SFLOAT || textureInfo.format == VK_FORMAT_R32G32B32_SFLOAT || textureInfo.format == VK_FORMAT_R32G32B32A32_SFLOAT;
+	
 	if (hdr)
 	{
 		if (formatInfo.bytesPerChannel == 4)
@@ -135,7 +137,7 @@ Texture::Texture(const TextureInfo& textureInfo)
 	const unsigned int nMips = (unsigned int)std::floor(std::log2(width > height ? width : height)) + 1;
 
 	// Check format support for dimensions and image size
-	assert(("[ERROR] Unsupported texture format", formatProperties.maxExtent.width >= width && formatProperties.maxExtent.height >= height && formatProperties.maxExtent.depth >= 1 && formatProperties.maxMipLevels >= 1 && formatProperties.maxArrayLayers >= 1 && formatProperties.sampleCounts & VK_SAMPLE_COUNT_1_BIT && formatProperties.maxResourceSize >= imageSize));
+	assert(("[ERROR] Format does not support images dimensions", formatProperties.maxExtent.width >= width && formatProperties.maxExtent.height >= height && formatProperties.maxExtent.depth >= 1 && formatProperties.maxMipLevels >= 1 && formatProperties.maxArrayLayers >= 1 && formatProperties.sampleCounts & VK_SAMPLE_COUNT_1_BIT && formatProperties.maxResourceSize >= imageSize));
 
 	// Create image
 	VkImageCreateInfo imageCreateInfo = {};

@@ -15,11 +15,16 @@ private:
 	template <typename T>
 	friend class ComponentManager;
 
-	static std::vector<EntityID> queuedIDs; // Technically operates like a stack.
+	// Dynamic array containing available IDs to use for new entties
+	static std::vector<EntityID> freeIDStack;
+
+	// Maps each entity ID to a Composition indicating which components each entity has
 	static std::unordered_map<EntityID, Composition> compositions;
+
+	// Maps each entity ID to a name for the entity
 	static std::unordered_map<EntityID, std::string> names;
 
-	EntityID mID;
+	EntityID mID; // Unique number identifying the entity
 
 public:
 	/*
@@ -28,6 +33,8 @@ public:
 	\return A reference to the entity's composition.
 	*/
 	static Composition& getCompositionFromID(const EntityID& ID);
+
+	static std::string& getNameFromID(const EntityID& ID);
 
 	Entity(const std::string& name = "");
 	
@@ -39,9 +46,9 @@ public:
 
 	/*
 	Construct an entity from an existing entity.
-	\param copy: An already existing entity. The created entity becomes equivilent to copy, as entities behave like references.
+	\param entity: An existing entity. The created entity references the same components as the inputed entity and is not a copy/duplicate but a new reference to the same entity.
 	*/
-	Entity(const Entity& copy);
+	Entity(const Entity& entity);
 
 	Entity& operator =(const Entity& other);
 
@@ -59,12 +66,19 @@ public:
 
 	/*
 	Gets the composition of the entity. The Composition type is a bitmask indicating which components an entity possesses.
-	\return A reference to the entity's composition. Manually changing an entity's composition is not advised so copying to a seperate Composition is recommended.
+	\return A reference to the entity's composition.
 	*/
 	const Composition& composition() const;
 
+	/*
+	Sets the name of the entity.
+	\param name: Name to assign to the entity.
+	*/
 	void setName(const std::string& name);
 
+	/*
+	\returns The name of the entity.
+	*/
 	const std::string& name() const;
 
 	/*
@@ -117,6 +131,11 @@ public:
 	unsigned int nbComponents() const;
 };
 
+/*
+Recursive method which serializes an entity followed by serializing each of its children.
+\param entity: Entity to serialize.
+\return An array of bytes containing the serialized entity.
+*/
 template <>
 std::vector<char> serialize(const Entity& entity);
 
@@ -131,7 +150,7 @@ void deserialize(const std::vector<char>& vecData, Entity& entity);
 
 /*
 Recursive method which destroys all children and children of children from an entity. Allows you to free a whole heirarchy just by caching the parent, 
-effectively using the transforms to maintain the pointers.
+effectively using transforms to maintain references to the children.
 \param entity : The entity whos children to destroy.
 */
 void destroyChildren(const Entity& entity);

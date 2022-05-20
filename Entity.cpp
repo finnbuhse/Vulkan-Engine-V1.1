@@ -1,22 +1,27 @@
 #include "ComponentManager.h"
 #include "Transform.h"
 
-std::vector<EntityID> Entity::queuedIDs = { 1 };
+std::vector<EntityID> Entity::freeIDStack = { 1 };
 std::unordered_map<EntityID, Composition> Entity::compositions;
 std::unordered_map<EntityID, std::string> Entity::names;
 
 Composition& Entity::getCompositionFromID(const EntityID& ID)
 {
-	return compositions[ID];
+	return compositions.at(ID);
+}
+
+std::string& Entity::getNameFromID(const EntityID& ID)
+{
+	return names.at(ID);
 }
 
 Entity::Entity(const std::string& name) :
-	mID(queuedIDs.back())
+	mID(freeIDStack.back())
 {
-	queuedIDs.pop_back(); // Remove ID from queue
+	freeIDStack.pop_back(); // Remove ID from queue
 
-	if (queuedIDs.empty()) // If queue is empty, it is guranteed that all IDs to 'mID' are used
-		queuedIDs.push_back(mID + 1); // So next ID assigned should be 'mID' + 1
+	if (freeIDStack.empty()) // If queue is empty, it is guranteed that all IDs to 'mID' are used
+		freeIDStack.push_back(mID + 1); // So next ID assigned should be 'mID' + 1
 
 	compositions.insert({ mID, 0 });
 	names.insert({ mID, name == "" ? "Entity " + std::to_string(mID) : name });
@@ -25,10 +30,10 @@ Entity::Entity(const std::string& name) :
 Entity::Entity(const EntityID& ID) :
 	mID(ID)
 {
-	assert(("[ERROR] Could not dereference ID", ID && ID < queuedIDs.front()));
+	assert(("[ERROR] Could not dereference ID", ID && ID < freeIDStack.front()));
 	#ifndef NDEBUG
-	for (unsigned int i = 1; i < queuedIDs.size(); i++)
-		assert(("[ERROR] Could not dereference ID", ID != queuedIDs[i]));
+	for (unsigned int i = 1; i < freeIDStack.size(); i++)
+		assert(("[ERROR] Could not dereference ID", ID != freeIDStack[i]));
 	#endif
 }
 
@@ -55,7 +60,7 @@ void Entity::destroy()
 	compositions.erase(mID); 
 	names.erase(mID);
 
-	queuedIDs.push_back(mID); // Add ID to queue to be reused
+	freeIDStack.push_back(mID); // Add ID to queue to be reused
 	mID = 0;
 }
 

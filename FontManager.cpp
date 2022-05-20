@@ -19,6 +19,7 @@ FontManager::~FontManager()
 {
 	RenderSystem& renderSystem = RenderSystem::instance();
 
+	// Free glyphs
 	for (const std::pair<std::string, Font*>& font : mFonts)
 	{
 		for (const std::pair<char, Glyph*>& c : *font.second)
@@ -45,13 +46,14 @@ const Font& FontManager::getFont(const char* filename)
     if (it != mFonts.end())
         return *it->second;
 
+	// Load font
     FT_Face face;
     #ifdef _DEBUG
     assert(("[ERROR] FreeType failed to load font", !FT_New_Face(mFT, filename, 0, &face)));
     #else
     FT_New_Face(mFT, filename, 0, &face);
     #endif
-    FT_Set_Pixel_Sizes(face, 0, 48);
+    FT_Set_Pixel_Sizes(face, 0, FONT_SIZE);
 
     Font* font = mFonts[filename] = new Font();
     for (unsigned char c = 0; c < 128; c++)
@@ -61,30 +63,16 @@ const Font& FontManager::getFont(const char* filename)
         #else
         FT_Load_Char(face, c, FT_LOAD_RENDER);
         #endif
-
 		
 		Glyph* glyph = font->operator[](c) = new Glyph();
-
 		glyph->size = glm::ivec2(face->glyph->bitmap.width, face->glyph->bitmap.rows);
 		glyph->bearing = glm::ivec2(face->glyph->bitmap_left, face->glyph->bitmap_top);
 		glyph->advance = face->glyph->advance.x;
 
+		// Load glyph texture; space does not have a texture and hence it's bitmap dimensions equal 0
 		if (face->glyph->bitmap.width != 0 && face->glyph->bitmap.rows != 0)
 		{
 			RenderSystem& renderSystem = RenderSystem::instance();
-
-			/* OpenGL code
-
-			glGenTextures(1, &character->texture);
-			glBindTexture(GL_TEXTURE_2D, character->texture);
-			glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, face->glyph->bitmap.width, face->glyph->bitmap.rows, 0, GL_RED, GL_UNSIGNED_BYTE, face->glyph->bitmap.buffer);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-			*/
-
-			// Equivilent Vulkan code
 
 			size_t imageSize = (size_t)face->glyph->bitmap.width * face->glyph->bitmap.rows;
 
@@ -252,7 +240,7 @@ const Font& FontManager::getFont(const char* filename)
 			result = vkCreateSampler(renderSystem.mDevice, &samplerCreateInfo, nullptr, &glyph->sampler);
 			validateResult(result);
 
-			// Wait idle until command buffer finishes so it can be reset, further increases the benefit of a seperate texture thread as the main thread would not have to wait
+			// Wait idle until command buffer finishes so it can be reset
 			result = vkQueueWaitIdle(renderSystem.mGraphicsQueue);
 			validateResult(result);
 

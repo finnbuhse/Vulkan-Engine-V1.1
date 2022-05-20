@@ -107,6 +107,7 @@ TransformCreateInfo::operator Transform() const
 	transform.position = position;
 	transform.rotation = rotation;
 	transform.scale = scale;
+	transform.dynamic = dynamic;
 	transform.worldPosition = glm::vec3(0.0f);
 	transform.worldRotation = glm::vec3(0.0f);
 	transform.worldScale = glm::vec3(1.0f);
@@ -139,7 +140,7 @@ glm::mat3 translateMatrix(const glm::vec2& translation)
 	glm::mat3 matrix;
 	matrix[0] = { 1, 0, 0 };
 	matrix[1] = { 0, 1, 0 };
-	matrix[2] = { translation.x, translation.y, 0 };
+	matrix[2] = { translation.x, translation.y, 1 };
 	return matrix;
 }
 
@@ -220,6 +221,7 @@ Transform2DCreateInfo::operator Transform2D() const
 	transform.position = position;
 	transform.rotation = rotation;
 	transform.scale = scale;
+	transform.dynamic = dynamic;
 	transform.worldPosition = glm::vec2(0.0f);
 	transform.worldRotation = 0.0f;
 	transform.worldScale = glm::vec2(1.0f);
@@ -237,137 +239,143 @@ TransformSystem::TransformSystem()
 void TransformSystem::updateTransform(const EntityID& entityID) const
 {
 	Transform& transform = mTransformManager.getComponent(entityID);
-
-	// Check for change in position, rotation, and scale.
-	transform.positionChanged = transform.position != transform.lastPosition;
-	transform.rotationChanged = transform.rotation != transform.lastRotation;
-	transform.scaleChanged = transform.scale != transform.lastScale;
-
-	if (transform.parentID)
+	if (transform.dynamic)
 	{
-		const Transform& parentTransform = mTransformManager.getComponent(transform.parentID);
+		// Check for change in position, rotation, and scale.
+		transform.positionChanged = transform.position != transform.lastPosition;
+		transform.rotationChanged = transform.rotation != transform.lastRotation;
+		transform.scaleChanged = transform.scale != transform.lastScale;
 
-		// World position is also changed if it's parents position, rotation, or scale has changed.
-		transform.positionChanged |= parentTransform.positionChanged || parentTransform.rotationChanged || parentTransform.scaleChanged;
-
-		// World rotation is also changed if it's parents rotation has changed.
-		transform.rotationChanged |= parentTransform.rotationChanged;
-
-		// Scale is also changed if it's parents scale has changed.
-		transform.scaleChanged |= parentTransform.scaleChanged; 
-
-		if (transform.positionChanged || transform.rotationChanged || transform.scaleChanged)
+		if (transform.parentID)
 		{
-			// Transformation matrix must be updated if any change has occurred.
-			transform.matrix = parentTransform.matrix * glm::translate(glm::mat4(1.0f), transform.position) * glm::mat4_cast(transform.rotation) * glm::scale(glm::mat4(1.0f), transform.scale);
+			const Transform& parentTransform = mTransformManager.getComponent(transform.parentID);
 
-			if (transform.positionChanged)
+			// World position is also changed if it's parents position, rotation, or scale has changed.
+			transform.positionChanged |= parentTransform.positionChanged || parentTransform.rotationChanged || parentTransform.scaleChanged;
+
+			// World rotation is also changed if it's parents rotation has changed.
+			transform.rotationChanged |= parentTransform.rotationChanged;
+
+			// Scale is also changed if it's parents scale has changed.
+			transform.scaleChanged |= parentTransform.scaleChanged;
+
+			if (transform.positionChanged || transform.rotationChanged || transform.scaleChanged)
 			{
-				glm::vec4 temp = parentTransform.matrix * glm::vec4(transform.position, 1.0f);
-				transform.worldPosition = glm::vec3(temp.x, temp.y, temp.z); // Update world position.
+				// Transformation matrix must be updated if any change has occurred.
+				transform.matrix = parentTransform.matrix * glm::translate(glm::mat4(1.0f), transform.position) * glm::mat4_cast(transform.rotation) * glm::scale(glm::mat4(1.0f), transform.scale);
+
+				if (transform.positionChanged)
+				{
+					glm::vec4 temp = parentTransform.matrix * glm::vec4(transform.position, 1.0f);
+					transform.worldPosition = glm::vec3(temp.x, temp.y, temp.z); // Update world position.
+				}
+
+				if (transform.rotationChanged)
+					transform.worldRotation = parentTransform.worldRotation * transform.rotation; // Update world rotation.
+
+				if (transform.scaleChanged)
+					transform.worldScale = parentTransform.worldScale * transform.scale; // Update world scale.
+
+				// Invoke changed callbacks.
+				for (unsigned int i = 0; i < transform.changedCallbacks.length; i++)
+					(*transform.changedCallbacks[i])(transform);
+
+				transform.lastPosition = transform.position;
+				transform.lastRotation = transform.rotation;
+				transform.lastScale = transform.scale;
 			}
-
-			if (transform.rotationChanged)
-				transform.worldRotation = parentTransform.worldRotation * transform.rotation; // Update world rotation.
-
-			if (transform.scaleChanged)
-				transform.worldScale = parentTransform.worldScale * transform.scale; // Update world scale.
-
-			// Invoke changed callbacks.
-			for (unsigned int i = 0; i < transform.changedCallbacks.length; i++)
-				(*transform.changedCallbacks[i])(transform);
-
-			transform.lastPosition = transform.position;
-			transform.lastRotation = transform.rotation;
-			transform.lastScale = transform.scale;
 		}
-	}
-	else
-	{
-		if (transform.positionChanged || transform.rotationChanged || transform.scaleChanged)
+		else
 		{
-			transform.matrix = glm::translate(glm::mat4(1.0f), transform.position) * glm::mat4_cast(transform.rotation) * glm::scale(glm::mat4(1.0f), transform.scale);
+			if (transform.positionChanged || transform.rotationChanged || transform.scaleChanged)
+			{
+				transform.matrix = glm::translate(glm::mat4(1.0f), transform.position) * glm::mat4_cast(transform.rotation) * glm::scale(glm::mat4(1.0f), transform.scale);
 
-			transform.worldPosition = transform.position;
-			transform.worldRotation = transform.rotation;
-			transform.worldScale = transform.scale;
+				transform.worldPosition = transform.position;
+				transform.worldRotation = transform.rotation;
+				transform.worldScale = transform.scale;
 
-			for (unsigned int i = 0; i < transform.changedCallbacks.length; i++)
-				(*transform.changedCallbacks[i])(transform);
+				for (unsigned int i = 0; i < transform.changedCallbacks.length; i++)
+					(*transform.changedCallbacks[i])(transform);
 
-			transform.lastPosition = transform.position;
-			transform.lastRotation = transform.rotation;
-			transform.lastScale = transform.scale;
+				transform.lastPosition = transform.position;
+				transform.lastRotation = transform.rotation;
+				transform.lastScale = transform.scale;
+			}
 		}
-	}
 
-	// Update children.
-	for (unsigned int i = 0; i < transform.childrenIDs.length; i++)
-		updateTransform(transform.childrenIDs[i]);
+		// Update children.
+		for (unsigned int i = 0; i < transform.childrenIDs.length; i++)
+			updateTransform(transform.childrenIDs[i]);
+	}
 }
 
 void TransformSystem::updateTransform2D(const EntityID& entityID) const
 {
 	Transform2D& transform = mTransform2DManager.getComponent(entityID);
 
-	// Check for change in position, rotation, and scale.
-	transform.positionChanged = transform.position != transform.lastPosition;
-	transform.rotationChanged = transform.rotation != transform.lastRotation;
-	transform.scaleChanged = transform.scale != transform.lastScale;
-
-	if (transform.parentID)
+	if (transform.dynamic)
 	{
-		const Transform2D& parentTransform = mTransform2DManager.getComponent(transform.parentID);
+		// Check for change in position, rotation, and scale.
+		transform.positionChanged = transform.position != transform.lastPosition;
+		transform.rotationChanged = transform.rotation != transform.lastRotation;
+		transform.scaleChanged = transform.scale != transform.lastScale;
 
-		transform.positionChanged |= parentTransform.positionChanged || parentTransform.rotationChanged || parentTransform.scaleChanged;
-		transform.rotationChanged |= parentTransform.rotationChanged;
-		transform.scaleChanged |= parentTransform.scaleChanged;
-
-		if (transform.positionChanged || transform.rotationChanged || transform.scaleChanged)
+		if (transform.parentID)
 		{
-			transform.matrix = parentTransform.matrix * translateMatrix(transform.position) * rotateMatrix(glm::radians(transform.rotation)) * enlargeMatrix(transform.scale);
+			const Transform2D& parentTransform = mTransform2DManager.getComponent(transform.parentID);
 
-			if (transform.positionChanged)
+			transform.positionChanged |= parentTransform.positionChanged || parentTransform.rotationChanged || parentTransform.scaleChanged;
+			transform.rotationChanged |= parentTransform.rotationChanged;
+			transform.scaleChanged |= parentTransform.scaleChanged;
+
+			if (transform.positionChanged || transform.rotationChanged || transform.scaleChanged)
 			{
-				glm::vec3 temp = parentTransform.matrix * glm::vec3(transform.position, 1.0f);
-				transform.worldPosition = glm::vec2(temp.x, temp.y);
+				transform.localMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(transform.position, 0.0f)) * glm::rotate(glm::mat4(1.0f), glm::radians(transform.rotation), glm::vec3(0.0f, 0.0f, 1.0f)) * glm::scale(glm::mat4(1.0f), glm::vec3(transform.scale, 1.0f));
+				transform.matrix = parentTransform.matrix * transform.localMatrix;
+
+				if (transform.positionChanged)
+				{
+					glm::vec4 temp = parentTransform.matrix * glm::vec4(transform.position, 0.0f, 1.0f);
+					transform.worldPosition = glm::vec2(temp.x, temp.y);
+				}
+				if (transform.rotationChanged)
+					transform.worldRotation = parentTransform.worldRotation + transform.rotation;
+
+				if (transform.scaleChanged)
+					transform.worldScale = parentTransform.worldScale * transform.scale;
+
+				for (unsigned int i = 0; i < transform.changedCallbacks.length; i++)
+					(*transform.changedCallbacks[i])(transform);
+
+				transform.lastPosition = transform.position;
+				transform.lastRotation = transform.rotation;
+				transform.lastScale = transform.scale;
 			}
-			if (transform.rotationChanged)
-				transform.worldRotation = parentTransform.worldRotation + transform.rotation;
-
-			if (transform.scaleChanged)
-				transform.worldScale = parentTransform.worldScale * transform.scale;
-
-			for (unsigned int i = 0; i < transform.changedCallbacks.length; i++)
-				(*transform.changedCallbacks[i])(transform);
-
-			transform.lastPosition = transform.position;
-			transform.lastRotation = transform.rotation;
-			transform.lastScale = transform.scale;
 		}
-	}
-	else
-	{
-		if (transform.positionChanged || transform.rotationChanged || transform.scaleChanged)
+		else
 		{
-			transform.matrix = translateMatrix(transform.position) * rotateMatrix(glm::radians(transform.rotation)) * enlargeMatrix(transform.scale);
+			if (transform.positionChanged || transform.rotationChanged || transform.scaleChanged)
+			{
+				transform.matrix = transform.localMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(transform.position, 0.0f)) * glm::rotate(glm::mat4(1.0f), glm::radians(transform.rotation), glm::vec3(0.0f, 0.0f, 1.0f)) * glm::scale(glm::mat4(1.0f), glm::vec3(transform.scale, 1.0f));
 
-			transform.worldPosition = transform.position;
-			transform.worldRotation = transform.rotation;
-			transform.worldScale = transform.scale;
+				transform.worldPosition = transform.position;
+				transform.worldRotation = transform.rotation;
+				transform.worldScale = transform.scale;
 
-			for (unsigned int i = 0; i < transform.changedCallbacks.length; i++)
-				(*transform.changedCallbacks[i])(transform);
+				for (unsigned int i = 0; i < transform.changedCallbacks.length; i++)
+					(*transform.changedCallbacks[i])(transform);
 
-			transform.lastPosition = transform.position;
-			transform.lastRotation = transform.rotation;
-			transform.lastScale = transform.scale;
+				transform.lastPosition = transform.position;
+				transform.lastRotation = transform.rotation;
+				transform.lastScale = transform.scale;
+			}
 		}
-	}
 
-	// Update children.
-	for (unsigned int i = 0; i < transform.childrenIDs.length; i++)
-		updateTransform2D(transform.childrenIDs[i]);
+		// Update children.
+		for (unsigned int i = 0; i < transform.childrenIDs.length; i++)
+			updateTransform2D(transform.childrenIDs[i]);
+	}
 }
 
 TransformSystem& TransformSystem::instance()
