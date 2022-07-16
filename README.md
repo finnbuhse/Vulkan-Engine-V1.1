@@ -1,6 +1,8 @@
 # Vulkan-Engine-V1.1
---== To Build ==--
+--==** WARNING **==--
+This is a personal project and there is no gurantee it will be compatible with your system hence will take no responsibility in the case of damage resulting from normal or inproper use.
 
+--== To Build ==--
 You will need the following libraries included in your project:
 
 GLFW - https://www.glfw.org
@@ -14,6 +16,8 @@ stb_image.h - https://github.com/nothings/stb
 Assimp - https://assimp.org/index.php/downloads
 
 PhysX - https://github.com/NVIDIAGameWorks/PhysX
+
+Freetype - https://github.com/freetype/freetype
 
 For each of these libraries, you will need to add their include directories, and their binaries if they have any (.lib & .dll files). The linker will take care of the .lib files so long as you have provided the correct directory to the files, while .dll files should be copied to the directory where the executable is built.
 
@@ -57,3 +61,13 @@ For each of these libraries, you will need to add their include directories, and
 20/05/2022
 - Added toggle buttons.
 - Added further mouse support to WindowManager.
+
+16/07/2022
+- Depricated Gun components, used an easy unideal solution. Repository will consist of mostly core items, along with helpful components such as Interactable and CameraController which are deemed general enough to be suited to a large proportion of their required uses.
+
+- Updated CharacterController for smoother movement.
+- Updated interactables for more consistent 'hits' when being interacted with. 
+- Updated UIButton and UIText scaling; buttons have separate member variables width and height, while text is scaled souley via Transform2D::scale. If either possess a parent, its scale will not effect the size of the button/text however their positions behave as one would expect from hierarchies.
+- Improved efficiency of button press detection/invokation of button callbacks.
+- Updated button callbacks to be passed the button's ID as an argument improving the flexibility of what button callbacks are capable of.
+- Added rudimentary scene menu. [In progress]
