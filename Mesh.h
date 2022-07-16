@@ -157,7 +157,7 @@ struct UIText
 	glm::vec3 colour;
 };
 
-typedef std::function<void()> ButtonCallback;
+typedef std::function<void(const Entity& entity)> ButtonCallback;
 
 struct UIButton
 {

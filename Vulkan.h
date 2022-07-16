@@ -5,7 +5,13 @@
 #include <cstring>
 #include <cassert>
 
+/*--== CONFIG ==--*/
+#define SCENE_MENU true
+/*--============--*/
+
+/*--== CONSTANTS ==--*/
 #define N_VK_DEVICE_FEATURES 55
+/*--===============--*/
 
 #ifdef NDEBUG
 #define validateResult(result)

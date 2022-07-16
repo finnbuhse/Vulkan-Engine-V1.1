@@ -1,4 +1,5 @@
 #include "Transform.h"
+#include "SceneMenu.h"
 #include <iostream>
 
 void print(const glm::vec2& vec2)
@@ -71,20 +72,32 @@ void Transform::enlarge(const glm::vec3& factor)
 
 void Transform::addChild(const Entity& child)
 {
-	TransformSystem& transformSystem = TransformSystem::instance();
+	static TransformSystem& transformSystem = TransformSystem::instance();
 	transformSystem.mEntityIDs.erase(std::find(transformSystem.mEntityIDs.begin(), transformSystem.mEntityIDs.end(), child.ID()));
 
 	child.getComponent<Transform>().parentID = entityID;
 	childrenIDs.push(child.ID());
+
+	#if SCENE_MENU == 1
+	static SceneMenu& sceneMenu = SceneMenu::instance();
+	sceneMenu.removeEntityButton(child);
+	#endif
 }
 
 void Transform::removeChild(const Entity& child)
 {
+	static TransformSystem& transformSystem = TransformSystem::instance();
+
 	child.getComponent<Transform>().parentID = NULL;
 
-	TransformSystem::instance().mEntityIDs.push_back(child.ID());
+	transformSystem.mEntityIDs.push_back(child.ID());
 
 	childrenIDs.remove(childrenIDs.find(child.ID()));
+
+	#if SCENE_MENU == 1
+	static SceneMenu& sceneMenu = SceneMenu::instance();
+	sceneMenu.addEntityButton(child);
+	#endif
 }
 
 void Transform::subscribeChangedEvent(const TransformChangedCallback* callback)
@@ -121,7 +134,7 @@ std::vector<char> serialize(const Transform& transform)
 	serializeInfo.position = transform.position;
 	serializeInfo.rotation = transform.rotation;
 	serializeInfo.scale = transform.scale;
-
+	serializeInfo.dynamic = transform.dynamic;
 	return serialize(serializeInfo);
 }
 
@@ -133,6 +146,7 @@ void deserialize(const std::vector<char>& vecData, Transform& write)
 	write.position = createInfo.position;
 	write.rotation = createInfo.rotation;
 	write.scale = createInfo.scale;
+	write.dynamic = createInfo.dynamic;
 }
 
 glm::mat3 translateMatrix(const glm::vec2& translation)
@@ -331,8 +345,7 @@ void TransformSystem::updateTransform2D(const EntityID& entityID) const
 
 			if (transform.positionChanged || transform.rotationChanged || transform.scaleChanged)
 			{
-				transform.localMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(transform.position, 0.0f)) * glm::rotate(glm::mat4(1.0f), glm::radians(transform.rotation), glm::vec3(0.0f, 0.0f, 1.0f)) * glm::scale(glm::mat4(1.0f), glm::vec3(transform.scale, 1.0f));
-				transform.matrix = parentTransform.matrix * transform.localMatrix;
+				transform.matrix = parentTransform.matrix * glm::translate(glm::mat4(1.0f), glm::vec3(transform.position, 0.0f)) * glm::rotate(glm::mat4(1.0f), glm::radians(transform.rotation), glm::vec3(0.0f, 0.0f, 1.0f)) * glm::scale(glm::mat4(1.0f), glm::vec3(transform.scale, 1.0f));
 
 				if (transform.positionChanged)
 				{
@@ -357,7 +370,7 @@ void TransformSystem::updateTransform2D(const EntityID& entityID) const
 		{
 			if (transform.positionChanged || transform.rotationChanged || transform.scaleChanged)
 			{
-				transform.matrix = transform.localMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(transform.position, 0.0f)) * glm::rotate(glm::mat4(1.0f), glm::radians(transform.rotation), glm::vec3(0.0f, 0.0f, 1.0f)) * glm::scale(glm::mat4(1.0f), glm::vec3(transform.scale, 1.0f));
+				transform.matrix = glm::translate(glm::mat4(1.0f), glm::vec3(transform.position, 0.0f)) * glm::rotate(glm::mat4(1.0f), glm::radians(transform.rotation), glm::vec3(0.0f, 0.0f, 1.0f)) * glm::scale(glm::mat4(1.0f), glm::vec3(transform.scale, 1.0f));
 
 				transform.worldPosition = transform.position;
 				transform.worldRotation = transform.rotation;

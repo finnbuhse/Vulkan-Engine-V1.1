@@ -9,8 +9,7 @@ void RigidBody::applyForce(const glm::vec3& force)
 
 void RigidBody::setTransform(const glm::vec3& position, const glm::quat& rotation)
 {
-	if (type == DYNAMIC || type == KINEMATIC)
-		pxRigidBody->setGlobalPose(physx::PxTransform(physx::PxVec3(position.x, position.y, position.z), physx::PxQuat(rotation.x, rotation.y, rotation.z, rotation.w)));
+	pxRigidBody->setGlobalPose(physx::PxTransform(physx::PxVec3(position.x, position.y, position.z), physx::PxQuat(rotation.x, rotation.y, rotation.z, rotation.w)));
 	Transform& transform = Entity(entityID).getComponent<Transform>();
 	transform.position = position;
 	transform.rotation = rotation;
@@ -519,7 +518,7 @@ physx::PxRaycastBuffer PhysicsSystem::raycast(const glm::vec3& origin, const glm
 	switch (filter)
 	{
 	case UNDEFINED:
-		filterData.flags |= physx::PxQueryFlag::eSTATIC | physx::PxQueryFlag::eDYNAMIC | physx::PxQueryFlag::eANY_HIT;
+		filterData.flags |= physx::PxQueryFlag::eSTATIC | physx::PxQueryFlag::eDYNAMIC;
 	case STATIC:
 		filterData.flags |= physx::PxQueryFlag::eSTATIC;
 		break;

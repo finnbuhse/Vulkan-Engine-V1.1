@@ -101,11 +101,12 @@ void InteractSystem::interact()
 		Transform& transform = mTransformManager.getComponent(mInteractor);
 		Interactor& interactor = mInteractorManager.getComponent(mInteractor);
 
-		physx::PxRaycastBuffer hit = mPhysicsSystem.raycast(transform.worldPosition, transform.worldDirection(), interactor.interactDistance);
-
-		if (hit.hasBlock)
+		physx::PxRaycastBuffer ray = mPhysicsSystem.raycast(transform.worldPosition, transform.worldDirection(), interactor.interactDistance);
+		unsigned int nHits = ray.getNbAnyHits();
+		for (unsigned int i = 0; i < nHits; i++)
 		{
-			Entity hitEntity(*((unsigned int*)hit.block.actor->userData));
+			physx::PxRaycastHit hit = ray.getAnyHit(i);
+			Entity hitEntity(*((unsigned int*)hit.actor->userData));
 
 			if (hitEntity.hasComponent<Interactable>())
 			{

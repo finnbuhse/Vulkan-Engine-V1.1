@@ -2834,7 +2834,7 @@ void RenderSystem::LMBPressed()
 			if(uiButton.toggle)
 				uiButton._pressed = !uiButton._pressed;
 				
-			uiButton.callback();
+			uiButton.callback(entity);
 		}
 	}
 }
@@ -3165,7 +3165,7 @@ std::vector<std::string> getTextures(const aiMaterial* aiMaterial, const aiTextu
 
 const Entity processMesh(const aiMesh* aiMesh, const aiScene* aiScene, const std::string& folder)
 {
-	const Entity meshEntity;
+	const Entity meshEntity(aiMesh->mName.C_Str());
 	meshEntity.addComponent<Transform>(TransformCreateInfo{});
 
 	aiMaterial* aiMaterial = aiScene->mMaterials[aiMesh->mMaterialIndex];
@@ -3239,7 +3239,7 @@ const Entity processMesh(const aiMesh* aiMesh, const aiScene* aiScene, const std
 
 const Entity processNode(const aiNode* aiNode, const aiScene* aiScene, const std::string& folder)
 {
-	const Entity nodeEntity;
+	const Entity nodeEntity(aiNode->mName.C_Str());
 	aiVector3D position, rotation, scale;
 	aiNode->mTransformation.Decompose(scale, rotation, position);
 	nodeEntity.addComponent<Transform>(TransformCreateInfo{ glm::vec3(position.x, position.y, position.z), glm::vec3(rotation.x, rotation.y, rotation.z), glm::vec3(scale.x, scale.y, scale.z) });
@@ -3273,7 +3273,8 @@ Entity loadModel(const char* directory)
 	if (directoryString.find("fbx") != std::string::npos)
 	{
 		root.getComponent<Transform>().scale *= 0.01f;
-		const Entity newRoot;
+		unsigned int nameStart = directoryString.find_last_of("/") + 1;
+		const Entity newRoot(directoryString.substr(nameStart, directoryString.find_last_of(".") - nameStart));
 		Transform& newRootTransform = newRoot.addComponent<Transform>(TransformCreateInfo{});
 		newRootTransform.addChild(root);
 		return newRoot;

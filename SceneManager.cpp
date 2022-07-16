@@ -116,22 +116,22 @@ void SceneManager::loadScene(const char* filename, const bool& destroyCurrent)
 	}
 }
 
-void SceneManager::subscribeEntityAddedEvent(EntityAddedCallback* callback)
+void SceneManager::subscribeEntityAddedEvent(const EntityAddedCallback* callback)
 {
-	mEntityAddedCallbacks.push_back(callback);
+	mEntityAddedCallbacks.push_back((EntityAddedCallback*)callback);
 }
 
-void SceneManager::unsubscribeEntityAddedEvent(EntityAddedCallback* callback)
+void SceneManager::unsubscribeEntityAddedEvent(const EntityAddedCallback* callback)
 {
 	mEntityAddedCallbacks.erase(std::find(mEntityAddedCallbacks.begin(), mEntityAddedCallbacks.end(), callback));
 }
 
-void SceneManager::subscribeEntityRemovedEvent(EntityRemovedCallback* callback)
+void SceneManager::subscribeEntityRemovedEvent(const EntityRemovedCallback* callback)
 {
-	mEntityRemovedCallbacks.push_back(callback);
+	mEntityRemovedCallbacks.push_back((EntityAddedCallback*)callback);
 }
 
-void SceneManager::unsubscribeEntityRemovedEvent(EntityRemovedCallback* callback)
+void SceneManager::unsubscribeEntityRemovedEvent(const EntityRemovedCallback* callback)
 {
 	mEntityRemovedCallbacks.erase(std::find(mEntityRemovedCallbacks.begin(), mEntityRemovedCallbacks.end(), callback));
 }

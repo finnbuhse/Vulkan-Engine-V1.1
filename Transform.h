@@ -92,7 +92,6 @@ struct Transform2D
 	EntityID entityID;
 	EntityID parentID;
 
-	glm::mat4 localMatrix;
 	glm::mat4 matrix;
 
 	glm::vec2 lastPosition;

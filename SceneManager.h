@@ -29,9 +29,9 @@ public:
 	void saveScene(const char* filename) const;
 	void loadScene(const char* filename, const bool& destroyCurrent = true);
 
-	void subscribeEntityAddedEvent(EntityAddedCallback* callback);
-	void unsubscribeEntityAddedEvent(EntityAddedCallback* callback);
+	void subscribeEntityAddedEvent(const EntityAddedCallback* callback);
+	void unsubscribeEntityAddedEvent(const EntityAddedCallback* callback);
 
-	void subscribeEntityRemovedEvent(EntityRemovedCallback* callback);
-	void unsubscribeEntityRemovedEvent(EntityRemovedCallback* callback);
+	void subscribeEntityRemovedEvent(const EntityRemovedCallback* callback);
+	void unsubscribeEntityRemovedEvent(const EntityRemovedCallback* callback);
 };
